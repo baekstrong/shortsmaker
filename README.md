@@ -11,3 +11,9 @@ https://github.com/baekstrong/shortsmaker
 ## 작업 규칙
 
 [AGENTS.md](AGENTS.md)에 공통 지침과 작업별 자동 커밋·푸시 규칙을 관리합니다.
+
+## 기획 문서
+
+- [현재 제품 요구사항](docs/product-spec.md)
+- [샘플 영상 검토 상태](docs/reference-review.md)
+- [회의 및 Buffer 검증 이력](docs/workflow.md)

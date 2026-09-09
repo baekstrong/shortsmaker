@@ -72,3 +72,8 @@
 - 증거: Buffer GraphQL 실응답(2026-09-09). Instagram 테스트 ID 6aa1391513f731cee0d2a1d4, YouTube 테스트 ID 6aa139193df446914da57b9d (모두 삭제됨).
 - API 구현 참고: Instagram metadata에 type/shouldShareToFeed, YouTube metadata에 title/categoryId 포함. deletePost(input:{id}) 사용.
 - 다음 행동: 앱 기획·구현 진행. 운영 예약은 발행 완료까지 유지되는 영상 저장소가 필요하며 이번 임시 터널은 검증 전용이다.
+
+## 2026-09-09 현재 요구사항 정리
+- 최신 요구사항 정본: docs/product-spec.md. 샘플 검토 상태: docs/reference-review.md.
+- AI 분할 제안 및 사용자 수정, 매번 후킹 10개와 최우선 추천, Mac 사용, 앱 단계별 완료 소리 확정. 추후 AI 일괄 분할·인코딩 모드는 확장 목표.
+- 제공된 두 폴더의 영상은 iCloud dataless 상태라 다운로드 요청 후 내용 확보 대기. 영상 실분석은 미완료.
