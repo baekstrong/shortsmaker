@@ -1,0 +1,19 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
+# 로컬 영상과 생성물
+media/
+uploads/
+outputs/
+*.mp4
+*.mov
+*.mkv
+*.webm
