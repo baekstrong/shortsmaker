@@ -60,3 +60,15 @@
 - 두 채널 모두 isQueuePaused=false. 대기열은 일시정지 상태가 아니지만 발행 권한·미디어 처리·실제 발행 성공까지 보장하는 검증은 아니다.
 - 예약 생성·게시물 발행은 수행하지 않았다. 다음 단계: 테스트 영상과 발행 일정을 정해 두 채널 예약·실발행 검증.
 - 출처: https://api.buffer.com 읽기 전용 account/organizations 및 channels 쿼리 응답(2026-09-09).
+
+## 2026-09-09 실제 영상 예약·삭제 검증 성공
+- 사용자 승인 범위: 지정 영상으로 예약 테스트 후 즉시 삭제. 실제 발행 금지.
+- 영상: `5개 제대로가 10개 엉망보다 빠릅니다.mp4`, 1080×1920, H.264/AAC, 157.673초, 약 49.96 MiB. 원본 파일은 변경·삭제하지 않았다.
+- 해당 파일 하나만 제공하는 로컬 서버와 임시 Cloudflare Tunnel로 HTTPS 링크를 생성했다. 테스트 후 서버·터널 종료.
+- 예약 시간은 실행 시점 7일 후인 2026-09-16 19:46:42 KST로 설정했다.
+- Instagram easystrength101: reel / shouldShareToFeed=true로 생성 성공 → 별도 조회 scheduled 확인 → DeletePostSuccess → 재조회 NOT_FOUND.
+- YouTube 백관장_직장인 체력 상담소: title 및 categoryId=17 지정, 테스트 보호용 privacy=private / notifySubscribers=false로 생성 성공 → 별도 조회 scheduled 확인 → DeletePostSuccess → 재조회 NOT_FOUND.
+- 실제 발행하지 않았으며 테스트 예약은 모두 삭제됐다. 예약 생성·조회·삭제 연동은 실계정으로 검증 완료. 미디어의 플랫폼 최종 처리·실제 발행은 검증 범위 밖이다.
+- 증거: Buffer GraphQL 실응답(2026-09-09). Instagram 테스트 ID 6aa1391513f731cee0d2a1d4, YouTube 테스트 ID 6aa139193df446914da57b9d (모두 삭제됨).
+- API 구현 참고: Instagram metadata에 type/shouldShareToFeed, YouTube metadata에 title/categoryId 포함. deletePost(input:{id}) 사용.
+- 다음 행동: 앱 기획·구현 진행. 운영 예약은 발행 완료까지 유지되는 영상 저장소가 필요하며 이번 임시 터널은 검증 전용이다.
