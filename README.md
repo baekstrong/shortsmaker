@@ -6,7 +6,7 @@
 
 `시작.command`를 더블클릭하면 `http://127.0.0.1:5099`가 열립니다. 터미널을 닫으면 서버가 종료됩니다.
 
-필요 환경: Python 3.14, FFmpeg/ffprobe, Codex CLI의 ChatGPT 구독 로그인. 첫 실행 시 Python 패키지와 음성 인식 모델을 다운로드합니다. GmarketSansBold가 설치되어 있으면 사용하며 없으면 Mac 기본 한글 폰트로 표시합니다.
+필요 환경: Python 3.14, FFmpeg/ffprobe, Codex CLI의 ChatGPT 구독 로그인. 자막 영역 인식은 Mac Vision과 Xcode Command Line Tools의 Swift를 사용합니다. 첫 실행 시 Python 패키지와 음성 인식 모델을 다운로드합니다. GmarketSansBold가 설치되어 있으면 사용하며 없으면 Mac 기본 한글 폰트로 표시합니다.
 
 ```sh
 python3 -m venv .venv
