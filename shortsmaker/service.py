@@ -27,6 +27,7 @@ def new_clip(start, end, title="", reason=""):
         font_size=80,
         framing=[],
         frame_suggestions=None,
+        frame_overrides=[],
         manual_frame=None,
         render=None,
     )
@@ -63,6 +64,19 @@ def validate_clip(clip, duration):
         or not 0 <= frame.get("vertical", 0.5) <= 1
     ):
         raise ValueError("확대율이나 영상 위치가 올바르지 않습니다.")
+
+    last = clip["start"]
+    ids = set()
+    for f in sorted(clip.get("frame_overrides", []), key=lambda f: f["start"]):
+        if (not all(isinstance(f.get(k), (int, float)) and math.isfinite(f[k]) for k in ("start", "end", "zoom", "center"))
+            or not last <= f["start"] < f["end"] <= clip["end"] + 0.001
+            or not 1 <= f["zoom"] <= 2 or not 0 <= f["center"] <= 1
+            or not isinstance(f.get("vertical", .5), (int, float))
+            or not math.isfinite(f.get("vertical", .5)) or not 0 <= f.get("vertical", .5) <= 1
+            or not isinstance(f.get("id"), str) or f["id"] in ids):
+            raise ValueError("설명 구간의 시간이나 위치가 올바르지 않습니다.")
+        ids.add(f["id"])
+        last = f["end"]
 
 
 class Service:
@@ -188,7 +202,7 @@ class Service:
 
             def save(project):
                 c = next(c for c in project["clips"] if c["id"] == clip["id"])
-                c.update(frame_suggestions=result)
+                c.update(frame_suggestions=result, frame_analysis_version=2)
 
             self.store.change(pid, save, history=True)
 
@@ -252,7 +266,22 @@ class Service:
             c = next((c for c in p["clips"] if c["id"] == body.get("clip_id")), None)
             if c is None:
                 raise ValueError("쇼츠를 찾을 수 없습니다.")
-            if action == "split":
+            if action == "frame_region":
+                sid = body["suggestion_id"]
+                suggestion = next((s for s in (c.get("frame_suggestions") or []) + c.get("frame_overrides", []) if s.get("id") == sid), None)
+                if suggestion is None:
+                    raise ValueError("설명 구간을 다시 선택해 주세요.")
+                frame = body.get("frame")
+                overrides = [f for f in c.get("frame_overrides", []) if f["id"] != sid]
+                if frame is not None:
+                    if not isinstance(frame, dict) or set(frame) - {"zoom", "center", "vertical"}:
+                        raise ValueError("영상 위치가 올바르지 않습니다.")
+                    start, end = max(c["start"], suggestion["start"]), min(c["end"], suggestion["end"])
+                    if any(start < f["end"] and end > f["start"] for f in overrides):
+                        raise ValueError("겹치는 직접 조정 구간이 있습니다. 기존 조정을 해제한 뒤 적용해 주세요.")
+                    overrides.append(dict(id=sid, start=start, end=end, **frame))
+                c["frame_overrides"] = sorted(overrides, key=lambda f: f["start"])
+            elif action == "split":
                 at = float(body["at"])
                 if not c["start"] + 0.1 < at < c["end"] - 0.1:
                     raise ValueError("구간 안에서 분할 지점을 선택해 주세요.")
@@ -309,6 +338,9 @@ class Service:
                 c.update(changes)
             else:
                 raise ValueError("지원하지 않는 편집입니다.")
+            if action in ("split", "merge", "update"):
+                c["frame_overrides"] = [dict(f, start=max(c["start"], f["start"]), end=min(c["end"], f["end"]))
+                    for f in c.get("frame_overrides", []) if f["end"] > c["start"] and f["start"] < c["end"]]
             validate_clip(c, p["metadata"]["duration"])
 
         return self.store.change(pid, mutate, revision=body.get("revision"))

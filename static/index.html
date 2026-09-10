@@ -53,7 +53,7 @@
       <div id="workspace" hidden>
         <div class="workflow-actions">
           <div><button id="prepare-auto" class="primary">① AI 자동 준비</button>
-            <p>내용 분석·분할 → 후킹 10개 → 그림·글 확인</p></div>
+            <p>내용 분석·분할 → 후킹 10개 → 설명 화면 찾기</p></div>
           <span class="workflow-arrow">→</span>
           <div><button id="schedule-open" class="primary">② 검토 완료 · 예약 달력</button>
             <p>문구·구도와 달력 확정 → 인코딩 → 매일 낮 12시 예약</p></div>
@@ -62,7 +62,7 @@
           <div class="steps">
             <button data-stage="analyze">내용 분석·분할</button>
             <button data-stage="hooks">후킹 제안</button>
-            <button data-stage="framing">그림·글 확인</button>
+            <button data-stage="framing">설명 화면 찾기</button>
             <button data-stage="encode">인코딩만</button>
           </div>
         </details>
@@ -101,8 +101,11 @@
                 aria-label="영상 탐색"
               /><span id="time">00:00</span>
             </div>
+            <div id="information-markers" class="information-markers" aria-label="설명 화면 구간"></div>
             <div id="frame-info" class="muted"></div>
-            <p class="muted">영상을 드래그해 위치 조정 · 쇼츠 구간 전체에 고정</p>
+            <div id="frame-scope" class="frame-scope"></div>
+            <button id="whole-frame" class="quiet" hidden>쇼츠 전체 위치 편집으로</button>
+            <p class="muted">설명 구간을 선택하면 그 구간만 위치를 조정합니다.</p>
             <div class="row frame-align" aria-label="영상 정렬">
               <button data-align="0">왼쪽 정렬</button>
               <button data-align="0.5">가운데 정렬</button>
@@ -145,6 +148,36 @@
               </div>
               <hr />
               <div class="pane-heading">
+                <h3>화면 구도</h3>
+                <button id="auto-frame" class="quiet">설명 화면 찾기</button>
+              </div>
+              <button id="reset-frame" class="quiet">150% · 중앙 기본값으로</button>
+              <label
+                >확대율 <output id="zoom-label">150%</output
+                ><input
+                  id="zoom" aria-label="확대율"
+                  type="range"
+                  min="1"
+                  max="2"
+                  step="0.01"
+                  value="1.5" /></label
+              ><label
+                >가로 중심 <output id="center-label">50%</output
+                ><input
+                  id="center" aria-label="가로 중심"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value="0.5"
+              /></label>
+              <p class="muted">
+                그림·설명 글·각도 표시의 등장 구간과 추천 위치입니다.
+                구간을 선택해 드래그하거나 추천 위치를 적용하세요. 경계는 약 2초 간격 분석 기준입니다.
+              </p>
+              <div id="frame-suggestions" aria-live="polite"></div>
+              <hr />
+              <div class="pane-heading">
                 <h3>후킹 문구</h3>
                 <button id="regenerate" class="quiet">10개 다시 제안 ↻</button>
               </div>
@@ -168,36 +201,6 @@
               ><button id="confirm-hook" class="primary wide">
                 이 문구로 확정
               </button>
-              <hr />
-              <div class="pane-heading">
-                <h3>화면 구도</h3>
-                <button id="auto-frame" class="quiet">그림·글 확인</button>
-              </div>
-              <button id="reset-frame" class="quiet">150% · 중앙 기본값으로</button>
-              <label
-                >확대율 <output id="zoom-label">150%</output
-                ><input
-                  id="zoom" aria-label="확대율"
-                  type="range"
-                  min="1"
-                  max="2"
-                  step="0.01"
-                  value="1.5" /></label
-              ><label
-                >가로 중심 <output id="center-label">50%</output
-                ><input
-                  id="center" aria-label="가로 중심"
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value="0.5"
-              /></label>
-              <p class="muted">
-                기본은 150%·중앙 고정입니다. AI는 그림·글이 잘리는 구간만
-                제안하며 위치를 자동으로 바꾸지 않습니다.
-              </p>
-              <div id="frame-suggestions" aria-live="polite"></div>
             </div>
           </section>
         </div>

@@ -229,3 +229,27 @@ def test_title_punctuation_uses_text_baseline(tmp_path):
                 white_y.append(y)
     assert yellow_y and white_y
     assert min(yellow_y) > min(white_y) + (max(white_y) - min(white_y)) * 0.5
+
+
+def test_information_intervals_include_uncropped_graphics_and_split_gaps():
+    from shortsmaker.framing import group_information
+    fs = [dict(index=i, scene=0, time=t, path=f"frame-{i}.jpg") for i,t in enumerate([0,2,4,6,8,10])]
+    regions = {i:dict(information_present=i in (1,2,4), left=.4, right=.6, zoom=1.5, subject="각도 설명선", reason="초록 각도선",confidence=.95) for i in range(6)}
+    items = group_information([dict(start=0,end=10)],fs,regions,dict(zoom=1.5,center=.5),dict(width=1920,height=1080))
+    assert [(s['start'],s['end']) for s in items] == [(1,5),(7,9)]
+    assert all(s['center']==.5 and s['zoom']==1.5 for s in items)
+
+
+def test_region_position_edit_affects_only_approved_interval_and_undo(tmp_path):
+    store,p=project(tmp_path);jobs=Jobs(tmp_path);service=Service(store,jobs)
+    c=new_clip(0,10);c['frame_suggestions']=[dict(id='test-region',start=2,end=4,zoom=1.2,center=0,time=3)]
+    p=store.change(p['id'],lambda p:p.update(clips=[c]))
+    initial=render_key(p,c)
+    assert scenes_for(c)==[dict(start=0,end=10,zoom=1.5,center=.5)]
+    p=service.edit(p['id'],dict(action='frame_region',clip_id=c['id'],suggestion_id='test-region',frame=dict(zoom=1.2,center=0,vertical=.4)))
+    scenes=scenes_for(p['clips'][0])
+    assert [(s['start'],s['end']) for s in scenes]==[(0,2),(2,4),(4,10)]
+    assert scenes[0]['center']==scenes[-1]['center']==.5 and scenes[1]['center']==0
+    assert render_key(p,p['clips'][0])!=initial
+    p=service.edit(p['id'],dict(action='undo'))
+    assert render_key(p,p['clips'][0])==initial

@@ -669,3 +669,12 @@ select:focus-visible {
   .calendar-day { padding: 4px; min-height: 75px; }
   .calendar-day p { font-size: 9px; }
 }
+
+.information-markers { display:flex; flex-wrap:wrap; gap:5px; margin:10px 0; }
+.information-markers button { padding:4px 7px; font-size:10px; border-color:#647349; color:var(--accent); }
+.frame-scope { font-size:11px; color:var(--accent); margin:7px 0; }
+.information-inspect { display:block; width:100%; white-space:normal; padding:8px; }
+.information-inspect img { display:block; width:100%; border-radius:5px; margin-bottom:8px; }
+.information-inspect strong, .information-inspect span, .information-inspect small { display:block; }
+.frame-suggestion.selected { border-color:var(--accent); }
+.frame-suggestion > .row { margin:8px 0; flex-wrap:wrap; }

@@ -32,6 +32,7 @@ let channels = [],
   audio = null,
   mutating = false,
   polling = false;
+let selectedRegionId = null;
 let frameDraft = null;
 let dragging = null;
 let sound = localStorage.getItem("sound") !== "off";
@@ -141,6 +142,7 @@ async function refresh() {
 }
 function selectProject(id) {
   cancelDrag();
+  selectedRegionId = null;
   pid = id;
   cid = null;
   shownRevision = -1;
@@ -172,7 +174,7 @@ function render() {
   $("clips").innerHTML = p.clips
     .map(
       (c, i) =>
-        `<article tabindex="0" role="button" data-clip="${c.id}" class="clip-card ${c.id === cid ? "active" : ""} ${!c.included ? "excluded" : ""}"><div class="row"><span class="badge">SHORT ${String(i + 1).padStart(2, "0")}</span><input type="checkbox" data-include="${c.id}" ${c.included ? "checked" : ""} aria-label="${i + 1}번 쇼츠 작업에 포함" ${busy() ? "disabled" : ""}></div><h3>${esc(c.title)}</h3><small>${time(c.start)} – ${time(c.end)} · ${(c.end - c.start).toFixed(1)}초</small><div><small class="${c.end - c.start > 180 ? "warning" : ""}">${c.end - c.start > 180 ? "3분 초과 · 추가 분할 필요" : c.confirmed ? "✓ 문구 확정" : "문구 확인 대기"}${c.frame_suggestions?.length ? " · 화면 조정 제안 있음" : ""}</small></div></article>`,
+        `<article tabindex="0" role="button" data-clip="${c.id}" class="clip-card ${c.id === cid ? "active" : ""} ${!c.included ? "excluded" : ""}"><div class="row"><span class="badge">SHORT ${String(i + 1).padStart(2, "0")}</span><input type="checkbox" data-include="${c.id}" ${c.included ? "checked" : ""} aria-label="${i + 1}번 쇼츠 작업에 포함" ${busy() ? "disabled" : ""}></div><h3>${esc(c.title)}</h3><small>${time(c.start)} – ${time(c.end)} · ${(c.end - c.start).toFixed(1)}초</small><div><small class="${c.end - c.start > 180 ? "warning" : ""}">${c.end - c.start > 180 ? "3분 초과 · 추가 분할 필요" : c.confirmed ? "✓ 문구 확정" : "문구 확인 대기"}${c.frame_suggestions?.length ? ` · 설명 화면 ${c.frame_suggestions.length}곳` : ""}</small></div></article>`,
     )
     .join("");
   const relevant = state.jobs.filter((j) => j.project_id === pid).slice(0, 2);
@@ -242,20 +244,48 @@ function renderEditor() {
   fieldValue("center", f.center);
   $("zoom-label").value = Math.round(f.zoom * 100) + "%";
   $("center-label").value = Math.round(f.center * 100) + "%";
+  const regions = informationRegions();
   $("frame-suggestions").innerHTML = !Array.isArray(c.frame_suggestions)
-    ? '<p class="muted">그림·글 확인을 실행하면 조정이 필요한 구간을 제안합니다.</p>'
-    : c.frame_suggestions.length ? c.frame_suggestions.map((s, i) =>
-      `<div class="frame-suggestion"><button data-inspect="${i}">${time(s.time)} · ${esc(s.direction)}</button><p>${esc(s.reason)}</p><small>제안 배율 ${Math.round(s.zoom * 100)}%${s.confidence < 0.8 ? " · 판단 불확실" : ""} · 자동 적용 안 함</small></div>`).join("")
-    : '<p class="muted">그림·글 조정 제안이 없습니다. 필요하면 직접 위치를 조정하세요.</p>';
+    ? '<p class="muted">설명 화면 찾기를 실행하면 그림·글·각도 표시의 등장 구간을 잡아줍니다.</p>'
+    : regions.length ? regions.map((s, i) => {
+      const applied = c.frame_overrides?.some(f => f.id === s.id);
+      return `<div class="frame-suggestion ${editingRegion()?.id === s.id ? "selected" : ""}">
+        <button class="information-inspect" data-inspect="${i}">${s.thumbnail ? `<img src="/api/projects/${pid}/clips/${c.id}/information/${s.id}.jpg?v=${project().revision}" alt="설명 자료가 등장하는 원본 화면" loading="lazy">` : ""}
+        <strong>${esc(s.subject || "설명 자료")}</strong><span>이 쇼츠 ${time(s.start-c.start)} ~ ${time(s.end-c.start)}</span><small>원본 ${time(s.start)} ~ ${time(s.end)}</small></button>
+        <p>${esc(s.reason)}</p><small>추천: ${esc(s.direction)} · ${Math.round(s.zoom*100)}%${s.confidence < .8 ? " · 확인 필요" : ""}</small>
+        <div class="row"><button data-inspect="${i}">이 구간 위치 조정</button>${s.id ? `<button data-apply-region="${i}">${applied ? "추천 위치 다시 적용" : "추천 위치 적용"}</button>` : ""}</div>
+        ${applied ? '<small>✓ 이 구간에 직접 조정 적용됨</small>' : '<small>아직 자동 적용하지 않았습니다.</small>'}
+      </div>`;
+    }).join("")
+    : '<p class="muted">설명 그림·글·각도 표시를 찾지 못했습니다. 필요하면 다시 분석해 주세요.</p>';
+  $("information-markers").innerHTML = regions.map((s,i) => `<button data-inspect="${i}" title="${esc(s.subject || s.reason)}">${time(s.start-c.start)}–${time(s.end-c.start)} 설명</button>`).join("");
   $("title-image").src =
     `/api/projects/${pid}/clips/${c.id}/title.png?v=${project().revision}`;
   for (const el of $("editor").querySelectorAll("button,input,textarea"))
     if (busy()) el.disabled = true;
     else el.disabled = false;
 }
+function informationRegions() {
+  const c = clip();
+  if (!c) return [];
+  const regions = (c.frame_suggestions || []).filter(s => Number.isFinite(s.start) && Number.isFinite(s.end) && s.id);
+  for (const f of c.frame_overrides || []) if (!regions.some(s => s.id === f.id))
+    regions.push({ ...f, time:(f.start+f.end)/2, subject:"직접 조정한 설명 구간", reason:"이전에 저장한 구간 위치", direction:"저장된 위치", confidence:1 });
+  return regions.sort((a,b) => a.start-b.start);
+}
+function editingRegion() {
+  const t = $("video").currentTime;
+  const regions = informationRegions();
+  const selected = regions.find(s => s.id === selectedRegionId && t >= s.start && t < s.end);
+  if (selected) return selected;
+  const applied = clip()?.frame_overrides?.find(f => t >= f.start && t < f.end);
+  return applied ? regions.find(s => s.id === applied.id) : null;
+}
 function activeFrame() {
   if (frameDraft?.pid === pid && frameDraft?.cid === cid) return frameDraft.frame;
-  return clip()?.manual_frame || { zoom: 1.5, center: 0.5, vertical: 0.5 };
+  const c = clip(), t = $("video").currentTime;
+  const f = c?.frame_overrides?.find(f => t >= f.start && t < f.end) || c?.manual_frame;
+  return f ? { zoom:f.zoom, center:f.center, vertical:f.vertical ?? .5 } : { zoom:1.5, center:.5, vertical:.5 };
 }
 function frameGeometry(frame) {
   const m = project().metadata;
@@ -285,7 +315,15 @@ function updatePreview() {
   $("time").textContent =
     `${time(Math.max(0, t - c.start))} / ${time(c.end - c.start)}`;
   $("frame-info").textContent =
-    `${Math.round(z * 100)}% · ${c.manual_frame || frameDraft ? "직접 조정 · 구간 전체 고정" : "중앙 고정"}`;
+    `${Math.round(z * 100)}% · ${c.frame_overrides?.some(f => t >= f.start && t < f.end) ? "이 설명 구간에 적용된 위치" : c.manual_frame ? "전체 기본 위치" : "중앙 고정"}`;
+  const region = editingRegion();
+  $("frame-scope").textContent = region ? `지금 조정하면 ${time(region.start-c.start)} ~ ${time(region.end-c.start)} 구간에만 적용` : "지금 조정하면 쇼츠 전체의 기본 위치에 적용";
+  $("whole-frame").hidden = !region;
+  $("reset-frame").textContent = region ? "이 설명 구간의 조정 해제" : "150% · 중앙 기본값으로";
+  fieldValue("zoom", s.zoom);
+  fieldValue("center", s.center);
+  $("zoom-label").value = Math.round(s.zoom*100)+"%";
+  $("center-label").value = Math.round(s.center*100)+"%";
 }
 let editQueue = Promise.resolve();
 function edit(action, extra = {}) {
@@ -346,6 +384,7 @@ $("clips").onclick = safe(async (e) => {
   const card = e.target.closest("[data-clip]");
   if (card) {
     cancelDrag();
+    selectedRegionId = null;
     cid = card.dataset.clip;
     shownRevision = -1;
     $("video").currentTime = clip().start;
@@ -468,11 +507,14 @@ $("regenerate").onclick = safe(() =>
 $("auto-frame").onclick = safe(() => run("framing", { clip_ids: [cid] }));
 async function saveFrame(frame) {
   if (!clip() || busy()) return;
-  const draft = { pid, cid, frame: frame || { zoom: 1.5, center: 0.5, vertical: 0.5 } };
+  const region = editingRegion();
+  const fallback = region ? (clip().manual_frame || { zoom:1.5, center:.5, vertical:.5 }) : { zoom:1.5, center:.5, vertical:.5 };
+  const draft = { pid, cid, frame: frame || fallback };
   frameDraft = draft;
   updatePreview();
   try {
-    await change({ manual_frame: frame });
+    if (region?.id) await edit("frame_region", { suggestion_id: region.id, frame });
+    else await change({ manual_frame: frame });
   } finally {
     if (frameDraft === draft) frameDraft = null;
     shownRevision = -1;
@@ -496,14 +538,36 @@ for (const id of ["zoom", "center"]) {
   };
   $(id).onchange = safe(() => saveFrame({ ...activeFrame(), [id]: Number($(id).value) }));
 }
-$("frame-suggestions").onclick = (e) => {
-  const b = e.target.closest("[data-inspect]");
-  if (!b || busy()) return;
-  const s = clip().frame_suggestions[Number(b.dataset.inspect)];
+function inspectInformation(index) {
+  const s = informationRegions()[index];
+  selectedRegionId = s.id || null;
   $("video").pause();
-  $("video").currentTime = s.time;
+  $("video").currentTime = s.time ?? (s.start+s.end)/2;
   $("preview").scrollIntoView({ block: "center", behavior: "smooth" });
-  updatePreview();
+  shownRevision = -1;
+  render();
+  return s;
+}
+const informationClick = safe(async (e) => {
+  if (busy()) return;
+  const inspect = e.target.closest("[data-inspect]"), apply = e.target.closest("[data-apply-region]");
+  if (inspect) inspectInformation(Number(inspect.dataset.inspect));
+  if (apply) {
+    const s = inspectInformation(Number(apply.dataset.applyRegion));
+    await saveFrame({ zoom:s.zoom, center:s.center, vertical:.5 });
+  }
+});
+$("frame-suggestions").onclick = informationClick;
+$("information-markers").onclick = informationClick;
+$("whole-frame").onclick = () => {
+  selectedRegionId = null;
+  const c = clip();
+  // Jump to an unadjusted part so the editing scope is unambiguous.
+  let t = c.start;
+  for (const f of c.frame_overrides || []) if (t >= f.start && t < f.end) t = f.end;
+  if (t >= c.end) { toast("전체가 설명 구간으로 조정되어 있습니다. 구간 조정을 먼저 해제해 주세요."); return; }
+  $("video").pause(); $("video").currentTime = t;
+  shownRevision = -1; render();
 };
 $("video").onpointerdown = (e) => {
   if (e.button !== 0 || !clip() || busy() || mutating || frameDraft) return;

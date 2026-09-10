@@ -1,5 +1,6 @@
 """Advisory checks for cropped diagrams/text; never apply subject tracking."""
 
+import hashlib
 import math
 from pathlib import Path
 import cv2
@@ -41,8 +42,8 @@ def sample_scenes(ctx, source, clip, folder):
         frames = []
         for scene_i, scene in enumerate(scenes):
             length = scene["end"] - scene["start"]
-            # Every ~12s, with both ends represented to protect movement/subtitle variation.
-            count = max(3, min(16, math.ceil(length / 12) + 1))
+            # Sample at most 2s apart, including brief overlays and explanatory graphics.
+            count = max(2, math.ceil(length / 2) + 1)
             for j in range(count):
                 t = scene["start"] + min(
                     length - 0.05, max(0.05, length * j / (count - 1))
@@ -73,13 +74,16 @@ def analyze(ctx, project, clip, folder, cache_dir):
     g = geometry(project["metadata"], current["zoom"], current["center"])
     view_left = g["x"] / g["scaled_width"]
     view_right = (g["x"] + 1080) / g["scaled_width"]
-    for offset in range(0, len(frames), 6):
-        group = frames[offset : offset + 6]
-        sheet = Image.new("RGB", (1920, 600 * math.ceil(len(group) / 2)), "#121212")
+    for offset in range(0, len(frames), 12):
+        group = frames[offset : offset + 12]
+        sheet = Image.new("RGB", (1920, 400 * math.ceil(len(group) / 3)), "#121212")
         draw = ImageDraw.Draw(sheet)
         for i, f in enumerate(group):
-            x, y = (i % 2) * 960, (i // 2) * 600
-            sheet.paste(Image.open(f["path"]), (x, y + 40))
+            x, y = (i % 3) * 640, (i // 3) * 400
+            with Image.open(f["path"]) as original:
+                thumb = original.copy()
+                thumb.thumbnail((640, 360))
+                sheet.paste(thumb, (x, y + 40))
             draw.text(
                 (x + 15, y + 10), f"FRAME {f['index']} / {f['time']:.2f}s", fill="white"
             )
@@ -91,16 +95,21 @@ def analyze(ctx, project, clip, folder, cache_dir):
             for s in project["transcript"]
             if s["end"] > clip["start"] and s["start"] < clip["end"]
         )
-        prompt = f"""첨부 이미지의 각 FRAME은 원본 가로 영상입니다. 한국어로 답하세요.
-현재 쇼츠는 기본150%·가운데 고정이며 사용자가 직접 조정합니다. AI는 위치를 바꾸지 않고 제안만 합니다.
-현재 보이는 원본 가로 범위는 {view_left:.3f}~{view_right:.3f}입니다(전체폭0~1).
-각 FRAME에서 설명에 필요한 그림·도표·슬라이드·판서·정보성 글이 현재 범위 밖으로 잘려 이해가 어려운 경우만 information_cut=true.
-사람 얼굴·몸·손을 따라가거나 가운데에 맞추려고 제안하지 마세요. 얼굴이 가장자리에 있거나 잘려도 그것만으로 제안하지 마세요.
-기존 대사 자막의 긴 줄, 배경 책 표지·장식 글자도 제안 대상이 아닙니다. 발언 내용상 실제로 보여주는 정보여야 합니다.
-information_cut=true이면 해당 정보의 left/right와 보존할 권장zoom(1.0~2.0, 기본1.5), confidence, 한국어 이유를 반환하세요.
-필요 없으면 information_cut=false, left=0.333, right=0.667, zoom=1.5로 반환하세요.
-불확실한 정보는 confidence를 낮추고 이유에 확인 필요를 적으세요. 0<=left<right<=1, confidence는0~1.
-각 FRAME 번호마다 정확히 하나 반환하세요. 번호:{[f['index'] for f in group]}
+        prompt = f"""첨부는 가로 영상의 연속 프레임입니다. 각 타일에서 실제 영상 영역만 좌표0~1로 보세요.
+목표는 '설명 자료가 등장하는 모든 구간'을 찾는 것입니다. 잘렸을 때만 찾는 것이 아닙니다.
+각 FRAME에서 아래 중 하나가 보이면 information_present=true:
+- 별도로 삽입한 그림·사진·비교 이미지·작은 설명 영상(PIP)
+- 몸/팔/관절 위에 그린 색 선, 점선, 화살표, 각도 표시(초록 선 등)
+- 판서·도표·슬라이드·큰 핵심 설명 글자/요점 카드
+현재 크롭에서 온전히 보여도 반드시 true로 기록하세요. 위치 조정이 없어도 구간 표시는 필요합니다.
+얼굴을 중앙에 놓기 위한 제안은 금지합니다. 말만 하는 인물이나 도형 없는 시범 동작만으로는 true가 아닙니다.
+일반 대사 자막, 계속 붙어있는 채널 워터마크, 배경 책/간판, 단순 로고/범퍼는 제외하세요.
+true이면 subject에 설명 자료 이름(예: 힙힌지 각도 초록선, 앉은 자세 비교 그림), left/right에는 그 자료 전체 폭과 작은 여백,
+zoom에는 자료가 보일 권장확대율(기본1.5, 필요시1.0~2.0), confidence와 한국어 이유를 주세요.
+false이면 subject/reason은 빈문자열, left=0.333,right=0.667,zoom=1.5로 간결하게 반환하세요.
+현재 보이는 가로 범위 {view_left:.3f}~{view_right:.3f}. 0<=left<right<=1, confidence는0~1.
+AI는 영상에 자동 적용하지 않습니다. 사용자가 확인할 추천 위치와 등장 구간을 만듭니다.
+FRAME 번호마다 정확히 하나: {[f['index'] for f in group]}
 발언 데이터:{context}"""
 
         result = ai.call(
@@ -128,18 +137,71 @@ information_cut=true이면 해당 정보의 left/right와 보존할 권장zoom(1
             ):
                 raise ValueError("AI 구도 좌표가 올바르지 않습니다.")
             regions[r["index"]] = r
-    result = []
-    for i, scene in enumerate(scenes):
-        rs = [(f, regions[f["index"]]) for f in frames
-              if f["scene"] == i and regions[f["index"]]["information_cut"]]
-        if not rs:
-            continue
-        # One advisory card per scene, with a sampled moment to inspect.
-        f, r = max(rs, key=lambda pair: pair[1]["confidence"])
-        center = (r["left"] + r["right"]) / 2
-        direction = "왼쪽 정보 확인" if center < (view_left + view_right) / 2 - 0.05 else (
-            "오른쪽 정보 확인" if center > (view_left + view_right) / 2 + 0.05 else "확대율 확인")
-        result.append(dict(scene, time=f["time"], center=round(center, 4),
-                           zoom=r["zoom"], confidence=r["confidence"],
-                           direction=direction, reason=r["reason"]))
-    return result
+    return group_information(scenes, frames, regions, current, project["metadata"])
+
+
+def group_information(scenes, frames, regions, current, metadata):
+    """Contiguous positive sample cells become real intervals, not one whole-scene hint."""
+    results = []
+    for scene_i, scene in enumerate(scenes):
+        fs = sorted((f for f in frames if f["scene"] == scene_i), key=lambda f: f["time"])
+        run = []
+        def finish():
+            if not run:
+                return
+            first, last = run[0], run[-1]
+            positive = [regions[fs[i]["index"]] for i in run]
+            start = scene["start"] if first == 0 else (fs[first-1]["time"] + fs[first]["time"]) / 2
+            end = scene["end"] if last == len(fs)-1 else (fs[last]["time"] + fs[last+1]["time"]) / 2
+            left, right = min(r["left"] for r in positive), max(r["right"] for r in positive)
+            zoom = min(min(r["zoom"] for r in positive), 1 / max(right-left, .01), 2)
+            zoom = max(1, zoom)
+            center = (left + right) / 2
+            crop = geometry(metadata, zoom, center)
+            if crop["x"] <= 2:
+                alignment, center = "왼쪽 정렬", 0.0
+            elif crop["x"] >= crop["scaled_width"] - 1082:
+                alignment, center = "오른쪽 정렬", 1.0
+            elif abs(center - .5) < .04:
+                alignment, center = "가운데 정렬", .5
+            else:
+                alignment = "왼쪽으로 위치 조정" if center < .5 else "오른쪽으로 위치 조정"
+            # At 100% the horizontal alignment has no visual effect.
+            if zoom <= 1.001:
+                alignment, center = "전체 폭 보기", .5
+            representative = max(run, key=lambda i: regions[fs[i]["index"]]["confidence"])
+            f = fs[representative]; r = regions[f["index"]]
+            identity = hashlib.sha256(f"{start:.3f}:{end:.3f}".encode()).hexdigest()[:16]
+            results.append(dict(id=identity, start=round(start,3), end=round(end,3), time=f["time"],
+                subject=r["subject"], direction=alignment, center=round(center,4), zoom=round(zoom,4),
+                left=left, right=right, confidence=min(x["confidence"] for x in positive),
+                reason=r["reason"], thumbnail=Path(f["path"]).name, sample_interval=2))
+        for i, f in enumerate(fs):
+            r = regions[f["index"]]
+            if not r["information_present"]:
+                finish(); run = []
+                continue
+            # Separate two simultaneous successive graphics on opposite sides.
+            if run:
+                previous = regions[fs[run[-1]]["index"]]
+                if abs((r["left"]+r["right"]-previous["left"]-previous["right"])/2) > .3:
+                    finish(); run = []
+            run.append(i)
+        finish()
+    return merge_touching(results)
+
+
+def merge_touching(results):
+    merged = []
+    for s in sorted(results, key=lambda s: s["start"]):
+        if (merged and abs(merged[-1]["end"] - s["start"]) < .15
+            and merged[-1].get("subject") == s.get("subject")
+            and abs(merged[-1]["center"] - s["center"]) < .08
+            and abs(merged[-1]["zoom"] - s["zoom"]) < .08):
+            previous = merged[-1]
+            previous["end"] = s["end"]
+            previous["confidence"] = min(previous["confidence"], s["confidence"])
+            previous["id"] = hashlib.sha256(f"{previous['start']:.3f}:{s['end']:.3f}".encode()).hexdigest()[:16]
+        else:
+            merged.append(dict(s))
+    return merged

@@ -42,6 +42,7 @@ def test_fixed_render_retains_continuous_audio_timing(tmp_path):
         yellow="싱크",
         confirmed=True,
         manual_frame=dict(zoom=1.5, center=0.3, vertical=0.6),
+        frame_overrides=[dict(id="information",start=1.5,end=2.5,zoom=1.5,center=0.3,vertical=0.2)],
         framing=[
             dict(start=0.5 + i * 0.5, end=1 + i * 0.5, zoom=1.5, center=0.5)
             for i in range(6)
@@ -63,6 +64,14 @@ def test_fixed_render_retains_continuous_audio_timing(tmp_path):
     g = geometry(p["metadata"], **c["manual_frame"])
     assert abs(rows.min() - g["y"]) <= 2
     assert abs(rows.max() - (g["y"] + g["scaled_height"] - 1)) <= 2
+
+    for at, vertical in [(1.5, .2), (2.5, .6)]:
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(at), "-i", result["path"],
+                        "-frames:v", "1", str(frame_path)], check=True)
+        pixels = np.asarray(Image.open(frame_path))
+        blue = (pixels[:, :, 2] > 150) & (pixels[:, :, 0] < 80) & (pixels[:, :, 1] < 80)
+        rows = np.where(blue[:, 540])[0]
+        assert abs(rows.min() - geometry(p['metadata'], vertical=vertical)['y']) <= 2
 
     def samples(path, start, duration):
         out = subprocess.run(

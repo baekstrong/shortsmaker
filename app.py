@@ -168,6 +168,16 @@ def create_app(data_dir=None):
             )
         return send_file(path, conditional=True)
 
+    @app.get("/api/projects/<pid>/clips/<cid>/information/<sid>.jpg")
+    def information_thumbnail(pid, cid, sid):
+        p = store.load(pid)
+        c = next(c for c in p["clips"] if c["id"] == cid)
+        s = next(s for s in (c.get("frame_suggestions") or []) if s.get("id") == sid)
+        name = s.get("thumbnail", "")
+        if not name or Path(name).name != name:
+            raise ValueError("설명 화면 미리보기가 없습니다.")
+        return send_file(store.folder(pid) / "frames" / cid / name, conditional=True)
+
     @app.get("/api/projects/<pid>/clips/<cid>/output")
     def output(pid, cid):
         p = store.load(pid)

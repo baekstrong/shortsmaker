@@ -152,7 +152,7 @@ def title_image(text, yellow, path, font_size=80):
 
 def render_key(project, clip):
     payload = {
-        "version": 5,
+        "version": 6,
         "source": project["metadata"],
         "path": project["source"],
         "clip": {
@@ -166,19 +166,31 @@ def render_key(project, clip):
                 "yellow",
                 "font_size",
                 "manual_frame",
+                "frame_overrides",
             )
         },
     }
+    payload["clip"]["frame_overrides"] = clip.get("frame_overrides", [])
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()[:20]
 
 
 def scenes_for(clip):
-    if clip.get("manual_frame"):
-        return [dict(start=clip["start"], end=clip["end"], **clip["manual_frame"])]
-    # AI analysis is advisory only. Never animate or apply old automatic crops.
-    return [dict(start=clip["start"], end=clip["end"], zoom=1.5, center=0.5)]
+    base = clip.get("manual_frame") or dict(zoom=1.5, center=0.5)
+    # Only user-approved ranges override the stable base. AI suggestions never do.
+    result, cursor = [], clip["start"]
+    for f in sorted(clip.get("frame_overrides", []), key=lambda f: f["start"]):
+        start, end = max(cursor, f["start"]), min(clip["end"], f["end"])
+        if end <= start:
+            continue
+        if start > cursor:
+            result.append(dict(start=cursor, end=start, **base))
+        result.append(dict(start=start, end=end, **{k: f[k] for k in ("zoom", "center", "vertical") if k in f}))
+        cursor = end
+    if cursor < clip["end"]:
+        result.append(dict(start=cursor, end=clip["end"], **base))
+    return result
 
 
 def video_filter(meta, scene, title_input="1:v"):
