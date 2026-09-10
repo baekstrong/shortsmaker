@@ -678,3 +678,5 @@ select:focus-visible {
 .information-inspect strong, .information-inspect span, .information-inspect small { display:block; }
 .frame-suggestion.selected { border-color:var(--accent); }
 .frame-suggestion > .row { margin:8px 0; flex-wrap:wrap; }
+
+.hook-evaluation { display:block; margin-top:8px; font-size:11px; font-weight:400; color:var(--muted); white-space:normal; }

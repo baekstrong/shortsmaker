@@ -22,13 +22,16 @@ NUMBER = {"type": "number"}
 TEXT = {"type": "string"}
 HOOK_SCHEMA = obj(
     {
+        "audience_problem": TEXT,
+        "content_evidence": TEXT,
         "hooks": {
             "type": "array",
             "minItems": 10,
             "maxItems": 10,
-            "items": obj({"text": TEXT, "yellow_phrase": TEXT}),
+            "items": obj({"text": TEXT, "yellow_phrase": TEXT, "approach": TEXT, "evaluation": TEXT}),
         },
         "recommended_index": {"type": "integer", "minimum": 0, "maximum": 9},
+        "recommended_text": TEXT,
         "reason": TEXT,
     }
 )
@@ -221,11 +224,24 @@ def hooks(ctx, project, clip, cache_dir, fresh=False):
     )
     if not text:
         raise ValueError("이 구간에 전사 내용이 없습니다. 먼저 영상을 분석해 주세요.")
-    prompt = f"""다음 쇼츠 내용에 충실한 한국어 후킹 문구를 정확히 10개 추천하세요.
-짧은 두 줄 제목에 적합하게 보통 15~35자로 쓰고 과장된 의료 효능이나 내용에 없는 약속을 만들지 마세요.
-매번 10개 모두 독립적으로 제안하고 가장 좋은 하나의 인덱스(0부터)와 짧은 추천 이유를 주세요.
-각 문구에 강조할 연속 단어/구절 yellow_phrase를 지정하세요. 반드시 text 안에 그대로 포함되어야 합니다.
-클립 주제: {clip.get('title','')}\n내용 데이터: {text}"""
+    opening = " ".join(s["text"] for s in project["transcript"]
+                       if s["end"] > clip["start"] and s["start"] < clip["start"] + 8)
+    prompt = f"""한국어 운동 쇼츠의 상단 후킹 문구를 다음 순서로 설계하세요.
+1. audience_problem: 이 영상을 볼 사람이 실제로 겪는 구체적인 상황/답답함을 추출.
+2. content_evidence: 해당 구간에서 실제로 설명하는 답/반전/구체적인 차이를 근거와 함께 정리.
+3. hooks: 서로 다른 접근의 문구 정확히10개. 단순 주제 요약이나 같은 문장 말바꾸기를 피하세요.
+자기 상황 인식, 예상과 다른 사실, 흔한 실수, 구체적인 차이, 질문, 실제 경험 등 내용에 맞는 접근을 다양하게 사용하세요.
+각 후보 approach에는 접근 이름, evaluation에는 자기관련성·궁금증·구체성·내용일치·첫 발언 연결의 강점과 약점을 짧게 비교해 쓰세요.
+4. 위 다섯 기준을 비교해 가장 좋은 하나의 recommended_index(0~9)를 선택하고 reason에 다른 후보보다 나은 이유와 주의점을 쓰세요.
+recommended_text에 선택한 후보 text를 줄바꿈까지 그대로 복사하세요. reason에는 번호나 인덱스 정정 지시 대신 선택한 문구 자체를 기준으로 설명하세요.
+내용일치와 첫 발언 연결이 약한 후보는 추천하지 마세요. 제목이 약속한 답이 실제 이 구간 안에 있어야 합니다.
+짧은 두 줄에 적합한 자연스러운 한국어, 보통15~35자. 질문형이나 '이것/충격/절대'를 기계적으로 반복하지 마세요.
+답 공개를 무조건 금지하지 말고, 보고 싶어지는 구체적인 이유를 남기세요. 불필요한 공포·의료효능·근거없는 수치·보장·최상급을 만들지 마세요.
+각 yellow_phrase는 text 안에 그대로 포함된 연속 구절. 필요시 줄바꿈으로 두 줄 배치.
+AI의 평가이며 실제 조회수/시청지속 성과가 검증된 것처럼 표현하지 마세요.
+클립 주제: {clip.get('title','')}
+첫8초 발언: {opening}
+내용 데이터: {text}"""
     result = call(
         ctx,
         prompt,
@@ -235,6 +251,10 @@ def hooks(ctx, project, clip, cache_dir, fresh=False):
         project["effort"],
         fresh=fresh,
     )
+    selected = [i for i, h in enumerate(result["hooks"]) if h["text"] == result["recommended_text"]]
+    if len(selected) != 1:
+        raise ValueError("AI 추천 문구가 후보와 일치하지 않습니다. 다시 생성해 주세요.")
+    result["recommended_index"] = selected[0]
     if any(
         not h["yellow_phrase"]
         or h["yellow_phrase"] not in h["text"]

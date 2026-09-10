@@ -274,3 +274,34 @@ def test_auto_information_framing_preserves_manual_edits_and_reset(tmp_path):
     c['frame_suggestions']=[dict(id='changed',start=1,end=5,zoom=1.5,center=1)]
     apply_recommendations(c)
     assert len(c['frame_overrides'])==1 and c['frame_overrides'][0]['id']=='left'
+
+
+def test_hook_refresh_preserves_confirmed_until_explicit_replacement(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from shortsmaker import ai
+    store,p=project(tmp_path);service=Service(store,Jobs(tmp_path))
+    c=new_clip(0,20);c.update(hook='기존 문구',yellow='기존',confirmed=True)
+    store.change(p['id'],lambda p:p.update(clips=[c]))
+    result=dict(hooks=[dict(text='새 문구',yellow_phrase='새',approach='문제 인식',evaluation='내용과 일치')]*10,
+                recommended_index=0,reason='비교 이유',audience_problem='상황',content_evidence='근거')
+    monkeypatch.setattr(ai,'hooks',lambda *args:result)
+    ctx=SimpleNamespace(progress=lambda *args:None)
+    service.hooks(ctx,p['id'],{})
+    assert store.load(p['id'])['clips'][0]['hook']=='기존 문구'
+    service.hooks(ctx,p['id'],dict(replace_selected=True))
+    c=store.load(p['id'])['clips'][0]
+    assert c['hook']=='새 문구' and not c['confirmed'] and c['hook_version']==2
+    assert c['hook_analysis']['content_evidence']=='근거'
+    p=service.edit(p['id'],dict(action='undo'))
+    assert p['clips'][0]['hook']=='기존 문구' and p['clips'][0]['confirmed']
+
+
+def test_hook_selection_uses_exact_text_not_inconsistent_index(tmp_path, monkeypatch):
+    from shortsmaker import ai
+    result=dict(hooks=[dict(text=f'후보 {i}',yellow_phrase='후보') for i in range(10)],
+                recommended_index=2,recommended_text='후보 1',reason='선택 이유')
+    monkeypatch.setattr(ai,'call',lambda *args,**kwargs:result)
+    p=dict(transcript=[dict(start=0,end=10,text='전사')],model='gpt-6-astra',effort='medium')
+    assert ai.hooks(None,p,dict(start=0,end=10),tmp_path)['recommended_index']==1
+    result['recommended_text']='후보에 없는 문구'
+    with pytest.raises(ValueError):ai.hooks(None,p,dict(start=0,end=10),tmp_path)

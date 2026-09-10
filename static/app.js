@@ -236,7 +236,7 @@ function renderEditor() {
   $("hooks").innerHTML = c.hooks
     .map(
       (h, i) =>
-        `<button class="hook-option ${i === c.recommended_index ? "recommended" : ""} ${h.text === c.hook ? "selected" : ""}" data-hook="${i}">${i === c.recommended_index ? "<strong>✦ AI 추천</strong>" : ""}${esc(h.text)}</button>`,
+        `<button class="hook-option ${i === c.recommended_index ? "recommended" : ""} ${h.text === c.hook ? "selected" : ""}" data-hook="${i}">${i === c.recommended_index ? "<strong>✦ AI 추천</strong>" : ""}${esc(h.text)}${h.approach ? `<small class="hook-evaluation">${esc(h.approach)} · ${esc(h.evaluation || "")}</small>` : ""}</button>`,
     )
     .join("");
   const f = activeFrame();

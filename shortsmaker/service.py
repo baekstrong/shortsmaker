@@ -176,14 +176,16 @@ class Service:
                     hooks=result["hooks"],
                     recommended_index=result["recommended_index"],
                     recommendation_reason=result["reason"],
+                    hook_analysis={k: result.get(k, "") for k in ("audience_problem", "content_evidence")},
+                    hook_version=2,
                 )
-                if not c["confirmed"]:
+                if not c["confirmed"] or args.get("replace_selected", False):
                     recommended = result["hooks"][result["recommended_index"]]
                     c.update(
-                        hook=recommended["text"], yellow=recommended["yellow_phrase"]
+                        hook=recommended["text"], yellow=recommended["yellow_phrase"], confirmed=False
                     )
 
-            self.store.change(pid, save)
+            self.store.change(pid, save, history=True)
 
     def framing(self, ctx, pid, args):
         from . import framing
