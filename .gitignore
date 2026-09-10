@@ -17,3 +17,6 @@ outputs/
 *.mov
 *.mkv
 *.webm
+data/
+.pytest_cache/
+*.log
