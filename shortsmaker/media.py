@@ -138,11 +138,10 @@ def title_image(text, yellow, path, font_size=80):
     for i, line in enumerate(lines):
         start = text.find(line, cursor)
         x = (WIDTH - font.getlength(line)) / 2
+        baseline = top + i * line_height - font.getbbox("가", anchor="ls")[1]
         for j, char in enumerate(line):
             color = "#FFD400" if start + j in highlight else "#FFFFFF"
-            draw.text(
-                (x, top + i * line_height), char, font=font, fill=color, anchor="lt"
-            )
+            draw.text((x, baseline), char, font=font, fill=color, anchor="ls")
             x += font.getlength(char)
         cursor = start + len(line)
     path = Path(path)
@@ -153,7 +152,7 @@ def title_image(text, yellow, path, font_size=80):
 
 def render_key(project, clip):
     payload = {
-        "version": 2,
+        "version": 4,
         "source": project["metadata"],
         "path": project["source"],
         "clip": {
@@ -265,8 +264,7 @@ def export_clip(ctx, project, clip, folder):
             video_filter(project["metadata"], scene),
             "-map",
             "[v]",
-            "-map",
-            "0:a?",
+            "-an",
             "-c:v",
             "libx264",
             "-preset",
@@ -275,12 +273,6 @@ def export_clip(ctx, project, clip, folder):
             "20",
             "-r",
             "30",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-af",
-            "aresample=async=1:first_pts=0",
             "-movflags",
             "+faststart",
             str(temp),
@@ -291,6 +283,8 @@ def export_clip(ctx, project, clip, folder):
     concat = folder / "concat.txt"
     concat.write_text("".join(f"file '{p.name}'\n" for p in parts))
     temp = folder / "final.tmp.mp4"
+    # Encode the original continuous audio once; concatenating AAC per scene
+    # accumulates codec priming delay and creates non-monotonic audio timestamps.
     ctx.run(
         [
             "ffmpeg",
@@ -304,8 +298,24 @@ def export_clip(ctx, project, clip, folder):
             "1",
             "-i",
             str(concat),
-            "-c",
+            "-ss",
+            str(clip["start"]),
+            "-i",
+            project["source"],
+            "-t",
+            str(clip["end"] - clip["start"]),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a?",
+            "-c:v",
             "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-af",
+            "aresample=async=1:first_pts=0",
             "-movflags",
             "+faststart",
             str(temp),

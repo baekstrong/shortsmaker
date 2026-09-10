@@ -1,5 +1,16 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
+const statusNames = {
+  pending: "준비 중",
+  creating: "예약 생성 중",
+  scheduled: "예약됨",
+  sending: "발행 중",
+  sent: "발행 완료",
+  error: "발행 실패",
+  unknown: "확인 필요",
+  rejected: "예약 실패",
+  cancelled: "취소됨",
+};
 const esc = (s) =>
   String(s ?? "").replace(
     /[&<>"']/g,
@@ -187,7 +198,17 @@ function renderEditor() {
   $("editor").hidden = !c;
   $("editor-empty").hidden = !!c;
   $("preview-placeholder").hidden = !!c;
+  $("download").disabled = !c || !c.render_current;
+  $("title-image").hidden = !c;
+  $("video").style.visibility = c ? "visible" : "hidden";
   if (!c) return;
+  const v = $("video");
+  if (
+    videoProject === pid &&
+    v.readyState > 0 &&
+    (v.currentTime < c.start || v.currentTime > c.end)
+  )
+    v.currentTime = c.start;
   fieldValue("clip-title", c.title);
   fieldValue("start", c.start);
   fieldValue("end", c.end);
@@ -300,10 +321,10 @@ $("clips").onclick = safe(async (e) => {
   const input = e.target.closest("[data-include]");
   if (input) {
     e.stopPropagation();
-    const prev = cid;
-    cid = input.dataset.include;
-    await change({ included: input.checked });
-    cid = prev;
+    await edit("update", {
+      clip_id: input.dataset.include,
+      changes: { included: input.checked },
+    });
     render();
     return;
   }
@@ -480,11 +501,19 @@ async function loadReservations() {
       .filter((r) => r.project_id === pid)
       .map(
         (r) =>
-          `<div class="reservation"><h3>${esc(r.title)}</h3>${r.deliveries.map((d) => `<div class="row"><span class="badge">${esc(d.service)}</span><span>${esc(d.status)}</span><small>${new Date(d.due_at).toLocaleString("ko-KR")}</small>${d.post_id ? `<small>ID ${esc(d.post_id)}</small>` : ""}${d.error ? `<small class="warning">${esc(d.error)}</small>` : ""}${d.status === "unknown" ? `<button data-reconcile="${r.id}" data-channel-id="${d.channel_id}">Buffer 게시물 ID 연결</button>` : ""}</div>`).join("")}<div class="row">${r.deleted_at ? `<small>${esc(r.deletion_reason)}</small>` : `<button data-delete-reservation="${r.id}">예약 취소·원격 영상 정리</button>`}</div></div>`,
+          `<div class="reservation"><h3>${esc(r.title)}</h3>${r.deliveries.map((d) => `<div class="row"><span class="badge">${esc(d.service)}</span><span>${esc(statusNames[d.status] || d.status)}</span><small>${new Date(d.due_at).toLocaleString("ko-KR")}</small>${d.post_id ? `<small>ID ${esc(d.post_id)}</small>` : ""}${d.error ? `<small class="warning">${esc(d.error)}</small>` : ""}${d.status === "unknown" ? `<button data-reconcile="${r.id}" data-channel-id="${d.channel_id}">Buffer 게시물 ID 연결</button>` : ""}</div>`).join("")}<div class="row">${r.deleted_at ? `<small>${esc(r.deletion_reason)}</small>` : `<button data-delete-reservation="${r.id}">예약 취소·원격 영상 정리</button>`}</div></div>`,
       )
       .join("") || '<p class="muted">아직 예약한 영상이 없습니다.</p>';
 }
 $("schedule-open").onclick = safe(async () => {
+  const selected = project().clips.filter((c) => c.included);
+  if (
+    !selected.length ||
+    selected.some((c) => !c.confirmed || !c.render_current)
+  )
+    throw Error(
+      "포함된 쇼츠의 문구 확정과 현재 편집본 인코딩을 먼저 완료해 주세요.",
+    );
   $("schedule-dialog").showModal();
   const data = await api("/api/channels");
   channels = data.channels;

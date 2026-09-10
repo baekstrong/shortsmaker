@@ -132,3 +132,67 @@ def test_restart_marks_interrupted_and_cancellation_stops_process(tmp_path):
     while jobs.items[j["id"]]["status"] == "running" and time.time() < deadline:
         time.sleep(0.02)
     assert jobs.items[j["id"]]["status"] == "cancelled"
+
+
+def test_restart_stops_only_matching_orphan_process_group(tmp_path):
+    import subprocess, sys
+    from shortsmaker.jobs import process_identity
+
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time;time.sleep(30)"], start_new_session=True
+    )
+    try:
+        job = dict(
+            id="b" * 32,
+            status="running",
+            project_id="p",
+            created_at="1",
+            kind="slow",
+            args={},
+            process_pid=child.pid,
+            process_identity=process_identity(child.pid),
+        )
+        atomic_json(tmp_path / "jobs" / (job["id"] + ".json"), job)
+        jobs = Jobs(tmp_path)
+        child.wait(timeout=5)
+        assert jobs.items[job["id"]]["status"] == "interrupted"
+        assert jobs.items[job["id"]]["process_pid"] is None
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+
+
+def test_shutdown_cancels_active_job_and_leaves_retryable_state(tmp_path):
+    import sys
+
+    jobs = Jobs(tmp_path)
+    jobs.handlers["slow"] = lambda ctx, p, args: ctx.run(
+        [sys.executable, "-c", "import time;time.sleep(30)"]
+    )
+    job = jobs.submit("p", "slow")
+    deadline = time.time() + 3
+    while jobs.items[job["id"]]["status"] == "queued" and time.time() < deadline:
+        time.sleep(0.01)
+    jobs.shutdown()
+    assert jobs.items[job["id"]]["status"] == "cancelled"
+    assert jobs.items[job["id"]].get("process_pid") is None
+
+
+def test_title_punctuation_uses_text_baseline(tmp_path):
+    from PIL import Image
+
+    target = tmp_path / "punctuation.png"
+    title_image("가,", ",", target)
+    image = Image.open(target)
+    yellow_y = []
+    white_y = []
+    for y in range(150, 400):
+        for x in range(400, 650):
+            pixel = image.getpixel((x, y))
+            if pixel[:3] == (255, 212, 0) and pixel[3] > 200:
+                yellow_y.append(y)
+            if pixel[:3] == (255, 255, 255) and pixel[3] > 200:
+                white_y.append(y)
+    assert yellow_y and white_y
+    assert min(yellow_y) > min(white_y) + (max(white_y) - min(white_y)) * 0.5

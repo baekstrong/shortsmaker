@@ -1,0 +1,29 @@
+{
+  "started_at": "2026-09-10T05:50:39.189149+00:00",
+  "finished_at": "2026-09-10T05:54:00.995669+00:00",
+  "due_at": "2026-09-17T05:50:39.188933+00:00",
+  "scheduled_statuses": [
+    [
+      "instagram",
+      "scheduled"
+    ],
+    [
+      "youtube",
+      "scheduled"
+    ]
+  ],
+  "final_statuses": [
+    [
+      "instagram",
+      "cancelled"
+    ],
+    [
+      "youtube",
+      "cancelled"
+    ]
+  ],
+  "r2_deleted": true,
+  "independent_post_queries": "both NOT_FOUND",
+  "independent_public_media_head": 404,
+  "actually_published": false
+}

@@ -4,6 +4,7 @@ import copy
 import json
 import math
 import sys
+import shutil
 from pathlib import Path
 from . import ai, media
 from .store import uid
@@ -192,6 +193,18 @@ class Service:
         self.source(p)
         for clip in self.selected(p, args):
             render = media.export_clip(ctx, p, clip, self.store.folder(pid))
+            export_dir = self.store.folder(pid) / "완성 영상"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{p['clips'].index(clip)+1:02d} {Path(render['path']).stem} {render['key'][:6]}.mp4"
+            destination = export_dir / filename
+            if not destination.exists():
+                temporary = export_dir / (uid() + ".tmp")
+                try:
+                    shutil.copy2(render["path"], temporary)
+                    temporary.replace(destination)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            render["export_path"] = str(destination)
 
             def save(project):
                 c = next(c for c in project["clips"] if c["id"] == clip["id"])

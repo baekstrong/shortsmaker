@@ -1,0 +1,514 @@
+{
+  "projects": [
+    {
+      "project_id": "8018308470e148feb7ff2491a6260e62",
+      "name": "0825_내보내기",
+      "original_unchanged": true,
+      "clips": [
+        {
+          "index": 1,
+          "title": "매번 조금씩 더 했는데\n체력은 왜 그대로일까?",
+          "render_key": "450797e995fcac172272",
+          "duration": 146.8,
+          "expected_duration": 146.78,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999999
+            },
+            {
+              "at": 73.39,
+              "offset_seconds": 0.0,
+              "correlation": 0.999999
+            },
+            {
+              "at": 134.78,
+              "offset_seconds": 0.0,
+              "correlation": 0.999999
+            }
+          ],
+          "caption_boxes_checked": 148,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 2,
+          "title": "점진적 과부하,\n매번 더 하라는 뜻일까?",
+          "render_key": "6eb2f44da908d330fcbd",
+          "duration": 102.566667,
+          "expected_duration": 102.56,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999969
+            },
+            {
+              "at": 51.28,
+              "offset_seconds": 0.0,
+              "correlation": 0.999997
+            },
+            {
+              "at": 90.56,
+              "offset_seconds": 0.0,
+              "correlation": 0.999994
+            }
+          ],
+          "caption_boxes_checked": 124,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 3,
+          "title": "더 강해지고 싶다면\n덜 하는 날도 필요합니다",
+          "render_key": "0d615600f537b54058b6",
+          "duration": 107.6,
+          "expected_duration": 107.6,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999998
+            },
+            {
+              "at": 53.8,
+              "offset_seconds": 0.0,
+              "correlation": 0.999994
+            },
+            {
+              "at": 95.6,
+              "offset_seconds": 0.0,
+              "correlation": 0.999996
+            }
+          ],
+          "caption_boxes_checked": 119,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 4,
+          "title": "컨디션은 매일 다른데\n운동 강도는 계속 올리나요?",
+          "render_key": "c693a100aed454ff050e",
+          "duration": 69.4,
+          "expected_duration": 69.4,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999979
+            },
+            {
+              "at": 34.7,
+              "offset_seconds": 0.0,
+              "correlation": 0.999986
+            },
+            {
+              "at": 57.4,
+              "offset_seconds": 0.0,
+              "correlation": 0.999993
+            }
+          ],
+          "caption_boxes_checked": 77,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 5,
+          "title": "컨디션 나쁜 날엔\n무게를 절반으로 낮추세요",
+          "render_key": "40928f7b5db2990918f8",
+          "duration": 69.24,
+          "expected_duration": 69.24,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999987
+            },
+            {
+              "at": 34.62,
+              "offset_seconds": 0.0,
+              "correlation": 0.999997
+            },
+            {
+              "at": 57.24,
+              "offset_seconds": 0.0,
+              "correlation": 0.999999
+            }
+          ],
+          "caption_boxes_checked": 73,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 6,
+          "title": "달리기 정체기라면\n속도와 시간을 섞어보세요",
+          "render_key": "ec1cde076566a32e1a6f",
+          "duration": 48.266667,
+          "expected_duration": 48.26,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999996
+            },
+            {
+              "at": 24.13,
+              "offset_seconds": 0.0,
+              "correlation": 0.999996
+            },
+            {
+              "at": 36.26,
+              "offset_seconds": 0.0,
+              "correlation": 0.999997
+            }
+          ],
+          "caption_boxes_checked": 49,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 7,
+          "title": "바벨 운동, 매번 전력 대신\n강한 날·중간 날·약한 날",
+          "render_key": "766f99e228a2ad5605c7",
+          "duration": 65.566667,
+          "expected_duration": 65.54,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999991
+            },
+            {
+              "at": 32.77,
+              "offset_seconds": 0.0,
+              "correlation": 0.999991
+            },
+            {
+              "at": 53.54,
+              "offset_seconds": 0.0,
+              "correlation": 0.999992
+            }
+          ],
+          "caption_boxes_checked": 88,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        }
+      ]
+    },
+    {
+      "project_id": "93463673a63a430285ff94d0cdd0384e",
+      "name": "0902_내보내기",
+      "original_unchanged": true,
+      "clips": [
+        {
+          "index": 1,
+          "title": "폭발적인 힘은\n왜 오래가지 못할까?",
+          "render_key": "b14cf4ea82feaa927e97",
+          "duration": 161.066667,
+          "expected_duration": 161.06,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999964
+            },
+            {
+              "at": 80.53,
+              "offset_seconds": 0.0,
+              "correlation": 0.999987
+            },
+            {
+              "at": 149.06,
+              "offset_seconds": 0.0,
+              "correlation": 0.99999
+            }
+          ],
+          "caption_boxes_checked": 338,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 2,
+          "title": "운동하다 느려지고\n자세까지 무너지는 이유",
+          "render_key": "d54fb0b5b24e3dffef28",
+          "duration": 118.266667,
+          "expected_duration": 118.26,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999977
+            },
+            {
+              "at": 59.13,
+              "offset_seconds": 0.0,
+              "correlation": 0.999974
+            },
+            {
+              "at": 106.26,
+              "offset_seconds": 0.0,
+              "correlation": 0.99997
+            }
+          ],
+          "caption_boxes_checked": 278,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 3,
+          "title": "체력 훈련, 운동 종류보다\n어떻게 하느냐가 중요합니다",
+          "render_key": "7b34cdf250ba467ef830",
+          "duration": 82.833333,
+          "expected_duration": 82.82,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999984
+            },
+            {
+              "at": 41.41,
+              "offset_seconds": 0.0,
+              "correlation": 0.999952
+            },
+            {
+              "at": 70.82,
+              "offset_seconds": 0.0,
+              "correlation": 0.999965
+            }
+          ],
+          "caption_boxes_checked": 160,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 4,
+          "title": "케틀벨 스윙, 왜 10회씩\n10세트를 할까요?",
+          "render_key": "24563b7f4dd5b9a49e5a",
+          "duration": 133.566667,
+          "expected_duration": 133.56,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999986
+            },
+            {
+              "at": 66.78,
+              "offset_seconds": 0.0,
+              "correlation": 0.999979
+            },
+            {
+              "at": 121.56,
+              "offset_seconds": 0.0,
+              "correlation": 0.999979
+            }
+          ],
+          "caption_boxes_checked": 359,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 5,
+          "title": "스윙 끝나고 쉬는데\n심박수가 더 오른다고?",
+          "render_key": "074cdb7e1370dbfaf7e2",
+          "duration": 76.133333,
+          "expected_duration": 76.12,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999968
+            },
+            {
+              "at": 38.06,
+              "offset_seconds": 0.0,
+              "correlation": 0.999955
+            },
+            {
+              "at": 64.12,
+              "offset_seconds": 0.0,
+              "correlation": 0.999986
+            }
+          ],
+          "caption_boxes_checked": 149,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 6,
+          "title": "2분 휴식이 맞을까?\n내 심박수로 조정하기",
+          "render_key": "5b54e58bb2274d902e32",
+          "duration": 98.7,
+          "expected_duration": 98.69,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999988
+            },
+            {
+              "at": 49.34,
+              "offset_seconds": 0.0,
+              "correlation": 0.999951
+            },
+            {
+              "at": 86.69,
+              "offset_seconds": 0.0,
+              "correlation": 0.999978
+            }
+          ],
+          "caption_boxes_checked": 184,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 7,
+          "title": "다음 세트는 언제?\n몸이 편해지는 신호를 찾으세요",
+          "render_key": "4da08151b089e5185e33",
+          "duration": 96.04,
+          "expected_duration": 96.04,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999983
+            },
+            {
+              "at": 48.02,
+              "offset_seconds": 0.0,
+              "correlation": 0.999987
+            },
+            {
+              "at": 84.04,
+              "offset_seconds": 0.0,
+              "correlation": 0.999948
+            }
+          ],
+          "caption_boxes_checked": 192,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 8,
+          "title": "케틀벨 증량 시점\n12분 테스트로 판단하기",
+          "render_key": "63d6892423bd3543fada",
+          "duration": 126.34,
+          "expected_duration": 126.34,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.999979
+            },
+            {
+              "at": 63.17,
+              "offset_seconds": 0.0,
+              "correlation": 0.999982
+            },
+            {
+              "at": 114.34,
+              "offset_seconds": 0.0,
+              "correlation": 0.999989
+            }
+          ],
+          "caption_boxes_checked": 239,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        },
+        {
+          "index": 9,
+          "title": "무게 올릴 때 10세트 전부?\n먼저 2세트만 올리세요",
+          "render_key": "06ed5206bf54ba704afc",
+          "duration": 144.066667,
+          "expected_duration": 144.04,
+          "video_codec": "h264",
+          "audio_codec": "aac",
+          "width": 1080,
+          "height": 1920,
+          "audio_windows": [
+            {
+              "at": 3,
+              "offset_seconds": 0.0,
+              "correlation": 0.99994
+            },
+            {
+              "at": 72.02,
+              "offset_seconds": 0.0,
+              "correlation": 0.999967
+            },
+            {
+              "at": 132.04,
+              "offset_seconds": 0.0,
+              "correlation": 0.999967
+            }
+          ],
+          "caption_boxes_checked": 277,
+          "outside_caption_boxes": 0,
+          "review_scenes": 0
+        }
+      ]
+    }
+  ]
+}

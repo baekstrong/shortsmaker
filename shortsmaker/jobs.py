@@ -11,6 +11,36 @@ from pathlib import Path
 from .store import atomic_json, now, uid
 
 
+def process_identity(pid):
+    try:
+        if os.getpgid(pid) != pid:
+            return None
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "lstart="],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return result.stdout.strip() or None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def stop_recorded_process(job):
+    pid, identity = job.get("process_pid"), job.get("process_identity")
+    if not pid or not identity or process_identity(pid) != identity:
+        return
+    try:
+        os.killpg(pid, signal.SIGTERM)
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and process_identity(pid) == identity:
+            time.sleep(0.05)
+        if process_identity(pid) == identity:
+            os.killpg(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
 class Cancelled(Exception):
     pass
 
@@ -43,6 +73,11 @@ class Context:
                 start_new_session=True,
             )
             try:
+                self.manager.update(
+                    self.job["id"],
+                    process_pid=proc.pid,
+                    process_identity=process_identity(proc.pid),
+                )
                 if input_text is not None:
                     proc.stdin.write(input_text.encode())
                     proc.stdin.close()
@@ -69,12 +104,21 @@ class Context:
                 return content
             finally:
                 if proc.poll() is None:
-                    os.killpg(proc.pid, signal.SIGTERM)
+                    try:
+                        os.killpg(proc.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
                     try:
                         proc.wait(timeout=3)
                     except subprocess.TimeoutExpired:
-                        os.killpg(proc.pid, signal.SIGKILL)
+                        try:
+                            os.killpg(proc.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
                         proc.wait()
+                self.manager.update(
+                    self.job["id"], process_pid=None, process_identity=None
+                )
 
 
 class Jobs:
@@ -88,7 +132,10 @@ class Jobs:
         for file in self.root.glob("*.json"):
             job = json.loads(file.read_text())
             if job["status"] in ("queued", "running"):
+                stop_recorded_process(job)
                 job.update(
+                    process_pid=None,
+                    process_identity=None,
                     status="interrupted",
                     message="앱이 종료되어 중단되었습니다. 재시도하면 저장된 단계부터 진행합니다.",
                     finished_at=now(),
@@ -96,6 +143,25 @@ class Jobs:
                 atomic_json(file, job)
             self.items[job["id"]] = job
         threading.Thread(target=self._worker, daemon=True).start()
+
+    def shutdown(self):
+        with self.lock:
+            for context in self.contexts.values():
+                context.cancelled.set()
+            for job in self.items.values():
+                if job["status"] == "queued":
+                    self.update(
+                        job["id"],
+                        status="interrupted",
+                        finished_at=now(),
+                        message="앱이 종료되었습니다. 재시도할 수 있습니다.",
+                    )
+        deadline = time.monotonic() + 5
+        while self.contexts and time.monotonic() < deadline:
+            time.sleep(0.05)
+        for job in self.list():
+            if job["status"] == "running":
+                stop_recorded_process(job)
 
     def update(self, job_id, **values):
         with self.lock:
@@ -183,7 +249,7 @@ class Jobs:
                 self.update(
                     job_id,
                     status="succeeded",
-                    message=label + "을 완료했습니다.",
+                    message=label + " 완료",
                     progress=100,
                     finished_at=now(),
                 )

@@ -79,9 +79,23 @@ def create_app(data_dir=None):
     def reservations():
         return jsonify(records=publisher.records())
 
+    def present(project):
+        for clip in project["clips"]:
+            render = clip.get("render")
+            clip["render_current"] = bool(
+                render
+                and render["key"] == media.render_key(project, clip)
+                and Path(render["path"]).is_file()
+            )
+        return project
+
     @app.get("/api/state")
     def state():
-        return jsonify(projects=store.list(), jobs=jobs.list(), models=ai.models())
+        return jsonify(
+            projects=[present(p) for p in store.list()],
+            jobs=jobs.list(),
+            models=ai.models(),
+        )
 
     @app.post("/api/choose-file")
     def choose_file():
@@ -109,7 +123,7 @@ def create_app(data_dir=None):
 
     @app.post("/api/projects/<pid>/edit")
     def edit(pid):
-        return jsonify(service.edit(pid, request.json))
+        return jsonify(present(service.edit(pid, request.json)))
 
     @app.post("/api/projects/<pid>/jobs/<kind>")
     def submit(pid, kind):
@@ -159,7 +173,8 @@ def create_app(data_dir=None):
 
     @app.post("/api/projects/<pid>/reveal")
     def reveal(pid):
-        folder = store.folder(pid)
+        folder = store.folder(pid) / "완성 영상"
+        folder.mkdir(parents=True, exist_ok=True)
         subprocess.run(["open", str(folder)], check=True)
         return jsonify(ok=True)
 
@@ -177,6 +192,14 @@ if __name__ == "__main__":
     except BlockingIOError:
         raise SystemExit("이미 이 데이터 폴더를 사용하는 앱이 실행 중입니다.")
     app = create_app(data_root)
+    import signal
+
+    def shutdown(signum, frame):
+        app.extensions["jobs"].shutdown()
+        raise SystemExit(0)
+
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, shutdown)
 
     def maintenance():
         while True:

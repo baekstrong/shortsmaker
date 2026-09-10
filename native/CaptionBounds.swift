@@ -34,7 +34,7 @@ while time < end {
                 // Vision reports coordinates relative to the ROI. Retain large text
                 // in the bottom ~16% of the full frame, excluding bookshelf labels.
                 guard b.minY < 0.45, b.height >= 0.07 else { return nil }
-                return ["left": b.minX, "right": b.maxX, "bottom": b.minY * 0.35,
+                return ["left": max(0, b.minX), "right": min(1, b.maxX), "bottom": b.minY * 0.35,
                         "top": b.maxY * 0.35, "text": text.string, "confidence": text.confidence]
             }
             results.append(["time": time, "boxes": boxes])
