@@ -171,9 +171,6 @@ function render() {
     p.summary ||
     "내용 분석을 시작하면 AI가 구간을 제안합니다. 직접 추가할 수도 있습니다.";
   if (!clip()) cid = p.clips[0]?.id;
-  $("export-location").textContent = p.export_dir || "인코딩 전에 반드시 선택해 주세요";
-  $("choose-export").disabled = busy();
-  $("choose-export").textContent = p.export_dir ? "저장 폴더 변경" : "저장 폴더 설정 · 필수";
   $("clips").innerHTML = p.clips
     .map(
       (c, i) =>
@@ -364,7 +361,7 @@ async function change(changes) {
 }
 async function run(kind, args = {}) {
   await editQueue;
-  if (kind === "encode" && !(await ensureExportFolder())) return;
+  if (kind === "encode" && !(await chooseExportFolder())) return;
   await api(`/api/projects/${pid}/jobs/${kind}`, args);
   await refresh();
   shownRevision = -1;
@@ -722,20 +719,14 @@ async function buildCalendar(initial = false) {
     if (requestId === calendarRequest) $("calendar-message").textContent = e.message;
   }
 }
-async function chooseExportFolder() {
-  const target = pid;
+async function chooseExportFolder(target = pid) {
   const p = await api(`/api/projects/${target}/export-folder`, {});
   if (p.cancelled) return false;
   await refresh();
   return true;
 }
-async function ensureExportFolder() {
-  return project().export_dir ? true : await chooseExportFolder();
-}
-$("choose-export").onclick = safe(chooseExportFolder);
 $("schedule-open").onclick = safe(async () => {
   await editQueue;
-  if (!(await ensureExportFolder())) return;
   if (!project().clips.some(c => c.included)) throw Error("예약할 쇼츠를 체크해 주세요.");
   calendarProject = pid;
   $("calendar-start").value = "";
@@ -768,6 +759,10 @@ $("schedule-submit").onclick = safe(async () => {
   $("schedule-submit").disabled = true;
   try {
     await editQueue;
+    if (!(await chooseExportFolder(calendarProject))) {
+      $("schedule-submit").disabled = false;
+      return;
+    }
     await api(`/api/projects/${calendarProject}/calendar/${plan.id}/confirm`, {});
     localStorage.setItem("schedulePreferences", JSON.stringify({ channel_ids: plan.channel_ids, youtube_privacy: plan.youtube_privacy }));
     $("schedule-dialog").close();
