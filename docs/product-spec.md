@@ -112,3 +112,12 @@
 - 예약 삭제 후 R2 테스트 영상 삭제, S3 HEAD404 및 공개 HTTPS HEAD404 확인. 첫 공개 확인 시 기본User-Agent403으로 중단된 시도의 객체도 삭제404 확인 후 앱 식별User-Agent로 재시도해 성공.
 - 검증 완료 범위: R2 영상 업로드·공개 접근·Buffer 예약 생성/조회/삭제·R2 정리. 실제 플랫폼 발행은 사용자 요청에 따라 제외. r2.dev는 개발용, 운영 도메인 별도 검토.
 - 다음: Codex 구독 Astra medium 앱 호출 검증 후 로컬 앱 개발. 출처:2026-09-10 S3 및 Buffer GraphQL 실응답.
+
+## 2026-09-10 Codex 구독 Astra medium 호출 검증 성공
+- codex login status: Logged in using ChatGPT. 기존 구독 인증으로 호출했으며 별도 API 키를 설정하지 않았다.
+- codex exec --ignore-user-config --ephemeral --skip-git-repo-check -s read-only -m gpt-6-astra -c model_reasoning_effort=medium 사용, 별도 임시 작업 폴더, --output-schema 및 --json 지정. 사용자 공통 설정은 수정하지 않았다.
+- 운동 강약·회복·반복 품질에 관한 테스트 요약을 입력해 후킹10개, 각 강조 구절, 추천 인덱스, 추천 이유 JSON 수신. CLI 종료코드0, JSON 파싱·개수10·강조문구 포함·추천범위 검사 통과.
+- 실제 출력: docs/verification/astra-hooks-example.json, 출력 계약: astra-hooks-schema.json. 결과를 캐시하고 실패/타임아웃을 처리하는 앱 연결 방식으로 활용 가능.
+- 한계: 이번 시험은 짧은 텍스트 입력과 구조화 출력 검증. 영상 전체 전사·이미지 입력·장시간 분석·자동 구도 판단 및 호출 중단/복구는 향후 구현 검증 대상. 구독 사용 한도를 소비하며 무제한 호출을 의미하지 않는다.
+- AI 구독 호출, R2 객체 및 공개URL, Buffer 두 채널 예약·즉시삭제의 사전 연결 검증 완료. 다음은 로컬 앱 구현.
+- 출처: 로컬 CLI 실호출(2026-09-10), https://learn.chatgpt.com/docs/non-interactive-mode .
