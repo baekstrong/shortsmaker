@@ -248,13 +248,13 @@ function renderEditor() {
   $("frame-suggestions").innerHTML = !Array.isArray(c.frame_suggestions)
     ? '<p class="muted">설명 화면 찾기를 실행하면 그림·글·각도 표시의 등장 구간을 잡아줍니다.</p>'
     : regions.length ? regions.map((s, i) => {
-      const applied = c.frame_overrides?.some(f => f.id === s.id);
+      const applied = c.frame_overrides?.find(f => f.id === s.id);
       return `<div class="frame-suggestion ${editingRegion()?.id === s.id ? "selected" : ""}">
         <button class="information-inspect" data-inspect="${i}">${s.thumbnail ? `<img src="/api/projects/${pid}/clips/${c.id}/information/${s.id}.jpg?v=${project().revision}" alt="설명 자료가 등장하는 원본 화면" loading="lazy">` : ""}
         <strong>${esc(s.subject || "설명 자료")}</strong><span>이 쇼츠 ${time(s.start-c.start)} ~ ${time(s.end-c.start)}</span><small>원본 ${time(s.start)} ~ ${time(s.end)}</small></button>
         <p>${esc(s.reason)}</p><small>추천: ${esc(s.direction)} · ${Math.round(s.zoom*100)}%${s.confidence < .8 ? " · 확인 필요" : ""}</small>
         <div class="row"><button data-inspect="${i}">이 구간 위치 조정</button>${s.id ? `<button data-apply-region="${i}">${applied ? "추천 위치 다시 적용" : "추천 위치 적용"}</button>` : ""}</div>
-        ${applied ? '<small>✓ 이 구간에 직접 조정 적용됨</small>' : '<small>아직 자동 적용하지 않았습니다.</small>'}
+        ${applied ? `<small>✓ ${applied.origin === 'ai' ? 'AI 추천 위치 자동 적용됨 · 필요하면 직접 조정하세요' : '직접 조정한 위치 적용됨'}</small>` : '<small>기존 직접 조정 구간과 겹치면 자동 적용을 건너뜁니다.</small>'}
       </div>`;
     }).join("")
     : '<p class="muted">설명 그림·글·각도 표시를 찾지 못했습니다. 필요하면 다시 분석해 주세요.</p>';
@@ -319,7 +319,7 @@ function updatePreview() {
   const region = editingRegion();
   $("frame-scope").textContent = region ? `지금 조정하면 ${time(region.start-c.start)} ~ ${time(region.end-c.start)} 구간에만 적용` : "지금 조정하면 쇼츠 전체의 기본 위치에 적용";
   $("whole-frame").hidden = !region;
-  $("reset-frame").textContent = region ? "이 설명 구간의 조정 해제" : "150% · 중앙 기본값으로";
+  $("reset-frame").textContent = region ? "이 설명 구간을 기본 위치로" : "150% · 중앙 기본값으로";
   fieldValue("zoom", s.zoom);
   fieldValue("center", s.center);
   $("zoom-label").value = Math.round(s.zoom*100)+"%";

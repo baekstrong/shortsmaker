@@ -178,7 +178,7 @@ def render_key(project, clip):
 
 def scenes_for(clip):
     base = clip.get("manual_frame") or dict(zoom=1.5, center=0.5)
-    # Only user-approved ranges override the stable base. AI suggestions never do.
+    # Stored automatic or manual information ranges override the stable base.
     result, cursor = [], clip["start"]
     for f in sorted(clip.get("frame_overrides", []), key=lambda f: f["start"]):
         start, end = max(cursor, f["start"]), min(clip["end"], f["end"])

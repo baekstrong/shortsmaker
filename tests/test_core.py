@@ -253,3 +253,24 @@ def test_region_position_edit_affects_only_approved_interval_and_undo(tmp_path):
     assert render_key(p,p['clips'][0])!=initial
     p=service.edit(p['id'],dict(action='undo'))
     assert render_key(p,p['clips'][0])==initial
+
+
+def test_auto_information_framing_preserves_manual_edits_and_reset(tmp_path):
+    from shortsmaker.framing import apply_recommendations
+    store,p=project(tmp_path);service=Service(store,Jobs(tmp_path))
+    c=new_clip(0,10)
+    c['frame_suggestions']=[dict(id='left',start=2,end=4,zoom=1.5,center=0)]
+    apply_recommendations(c)
+    assert c['frame_overrides'][0]['origin']=='ai'
+    assert [f['center'] for f in scenes_for(c)]==[.5,0,.5]
+    p=store.change(p['id'],lambda p:p.update(clips=[c]))
+    p=service.edit(p['id'],dict(action='frame_region',clip_id=c['id'],suggestion_id='left',frame=dict(zoom=1.3,center=.2,vertical=.5)))
+    c=p['clips'][0];apply_recommendations(c)
+    assert c['frame_overrides'][0]['center']==.2
+    p=service.edit(p['id'],dict(action='frame_region',clip_id=c['id'],suggestion_id='left',frame=None))
+    c=p['clips'][0];apply_recommendations(c)
+    assert c['frame_overrides'][0]['center']==.5
+    assert c['frame_overrides'][0]['origin']=='manual'
+    c['frame_suggestions']=[dict(id='changed',start=1,end=5,zoom=1.5,center=1)]
+    apply_recommendations(c)
+    assert len(c['frame_overrides'])==1 and c['frame_overrides'][0]['id']=='left'

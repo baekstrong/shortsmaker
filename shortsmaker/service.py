@@ -203,6 +203,8 @@ class Service:
             def save(project):
                 c = next(c for c in project["clips"] if c["id"] == clip["id"])
                 c.update(frame_suggestions=result, frame_analysis_version=2)
+                framing.apply_recommendations(c)
+                validate_clip(c, project["metadata"]["duration"])
 
             self.store.change(pid, save, history=True)
 
@@ -272,6 +274,8 @@ class Service:
                 if suggestion is None:
                     raise ValueError("설명 구간을 다시 선택해 주세요.")
                 frame = body.get("frame")
+                if frame is None:
+                    frame = dict(c.get("manual_frame") or dict(zoom=1.5, center=.5, vertical=.5))
                 overrides = [f for f in c.get("frame_overrides", []) if f["id"] != sid]
                 if frame is not None:
                     if not isinstance(frame, dict) or set(frame) - {"zoom", "center", "vertical"}:
@@ -279,7 +283,7 @@ class Service:
                     start, end = max(c["start"], suggestion["start"]), min(c["end"], suggestion["end"])
                     if any(start < f["end"] and end > f["start"] for f in overrides):
                         raise ValueError("겹치는 직접 조정 구간이 있습니다. 기존 조정을 해제한 뒤 적용해 주세요.")
-                    overrides.append(dict(id=sid, start=start, end=end, **frame))
+                    overrides.append(dict(id=sid, start=start, end=end, origin="manual", **frame))
                 c["frame_overrides"] = sorted(overrides, key=lambda f: f["start"])
             elif action == "split":
                 at = float(body["at"])

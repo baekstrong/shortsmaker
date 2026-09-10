@@ -1,4 +1,4 @@
-"""Advisory checks for cropped diagrams/text; never apply subject tracking."""
+"""Find explanatory diagrams/text and apply stable interval framing."""
 
 import hashlib
 import math
@@ -108,7 +108,7 @@ true이면 subject에 설명 자료 이름(예: 힙힌지 각도 초록선, 앉�
 zoom에는 자료가 보일 권장확대율(기본1.5, 필요시1.0~2.0), confidence와 한국어 이유를 주세요.
 false이면 subject/reason은 빈문자열, left=0.333,right=0.667,zoom=1.5로 간결하게 반환하세요.
 현재 보이는 가로 범위 {view_left:.3f}~{view_right:.3f}. 0<=left<right<=1, confidence는0~1.
-AI는 영상에 자동 적용하지 않습니다. 사용자가 확인할 추천 위치와 등장 구간을 만듭니다.
+추천 위치는 해당 설명 구간에 고정 적용되고 사용자가 검토·수정합니다. 인물 이동 추적은 하지 않습니다.
 FRAME 번호마다 정확히 하나: {[f['index'] for f in group]}
 발언 데이터:{context}"""
 
@@ -205,3 +205,18 @@ def merge_touching(results):
         else:
             merged.append(dict(s))
     return merged
+
+
+def apply_recommendations(clip):
+    """Refresh automatic ranges while preserving every manual adjustment."""
+    manual = [dict(f) for f in clip.get("frame_overrides", []) if f.get("origin") != "ai"]
+    result = list(manual)
+    for s in clip.get("frame_suggestions") or []:
+        if not s.get("id") or "start" not in s or "end" not in s:
+            continue
+        start, end = max(clip["start"], s["start"]), min(clip["end"], s["end"])
+        if end <= start or any(start < f["end"] and end > f["start"] for f in result):
+            continue
+        result.append(dict(id=s["id"], start=start, end=end, zoom=s["zoom"],
+                           center=s["center"], vertical=.5, origin="ai"))
+    clip["frame_overrides"] = sorted(result, key=lambda f: f["start"])
