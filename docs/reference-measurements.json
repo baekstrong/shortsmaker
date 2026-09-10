@@ -1,0 +1,642 @@
+{
+  "date": "2026-09-10",
+  "inventory": [
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/0902_내보내기.mp4",
+      "name": "0902_내보내기.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 1098.092,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/1.mp4",
+      "name": "1.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 75.547,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/2.mp4",
+      "name": "2.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 116.764,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30000/1001"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/3.mp4",
+      "name": "3.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 119.45,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30000/1001"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/4.mp4",
+      "name": "4.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 96.964,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/5.mp4",
+      "name": "5.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 159.509,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30000/1001"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/6.mp4",
+      "name": "6.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 139.111,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30000/1001"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/7.mp4",
+      "name": "7.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 126.014,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30000/1001"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/8.mp4",
+      "name": "8.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 145.84,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/금방 퍼지는 몸, 타고난 게 아닙니다.mp4",
+      "name": "금방 퍼지는 몸, 타고난 게 아닙니다.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 75.56,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "1499/50"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/숨넘어가게 안 해도 체력은 늡니다.mp4",
+      "name": "숨넘어가게 안 해도 체력은 늡니다.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 119.46,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "1499/50"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/쉬는 동안에도 체력은 늘고 있습니다.mp4",
+      "name": "쉬는 동안에도 체력은 늘고 있습니다.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 159.525,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "1499/50"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/케틀벨 스윙 무게 올릴 땐 2세트씩 올리세요.mp4",
+      "name": "케틀벨 스윙 무게 올릴 땐 2세트씩 올리세요.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 145.848,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "1499/50"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/케틀벨 스윙 쉬는시간 심박수 보세요.mp4",
+      "name": "케틀벨 스윙 쉬는시간 심박수 보세요.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 139.109,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "1499/50"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/케틀벨스윙 무게 증량 기준 12분 200회.mp4",
+      "name": "케틀벨스윙 무게 증량 기준 12분 200회.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 125.999,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "1499/50"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/타는 느낌까지 참으면 다칩니다.mp4",
+      "name": "타는 느낌까지 참으면 다칩니다.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 116.758,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "1499/50"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/원데이 수업 이론/쇼츠/할때 마다 최대한 하면 손해입니다.mp4",
+      "name": "할때 마다 최대한 하면 손해입니다.mp4",
+      "group": "원데이 수업 이론",
+      "duration": 96.976,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "1499/50"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/0825_내보내기.mp4",
+      "name": "0825_내보내기.mp4",
+      "group": "운동 밀당",
+      "duration": 638.732,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/쇼츠/1.mp4",
+      "name": "1.mp4",
+      "group": "운동 밀당",
+      "duration": 96.837,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30000/1001"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/쇼츠/2.mp4",
+      "name": "2.mp4",
+      "group": "운동 밀당",
+      "duration": 102.878,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/쇼츠/3.mp4",
+      "name": "3.mp4",
+      "group": "운동 밀당",
+      "duration": 134.256,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/쇼츠/4.mp4",
+      "name": "4.mp4",
+      "group": "운동 밀당",
+      "duration": 112.646,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/쇼츠/5.mp4",
+      "name": "5.mp4",
+      "group": "운동 밀당",
+      "duration": 114.279,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30000/1001"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/쇼츠/덜 하는 날이 있어야 체력이 늡니다.mp4",
+      "name": "덜 하는 날이 있어야 체력이 늡니다.mp4",
+      "group": "운동 밀당",
+      "duration": 102.876,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "2999/100"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/쇼츠/매번 무게 올리면  오히려 안 늡니다.mp4",
+      "name": "매번 무게 올리면  오히려 안 늡니다.mp4",
+      "group": "운동 밀당",
+      "duration": 96.866,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "30000/1001"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/쇼츠/무게가 안 늘면, 무게를 내리세요.mp4",
+      "name": "무게가 안 늘면, 무게를 내리세요.mp4",
+      "group": "운동 밀당",
+      "duration": 114.281,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "2999/100"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/쇼츠/부상 오는 순서는 정해져 있습니다.mp4",
+      "name": "부상 오는 순서는 정해져 있습니다.mp4",
+      "group": "운동 밀당",
+      "duration": 134.257,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "2999/100"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    },
+    {
+      "path": "/Users/baek/Desktop/이번주 유튜브 영상 자료/롱폼/운동 밀당/쇼츠/피곤한 날 운동하다가  반년 쉬었습니다.mp4",
+      "name": "피곤한 날 운동하다가  반년 쉬었습니다.mp4",
+      "group": "운동 밀당",
+      "duration": 112.647,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "2999/100"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ]
+    }
+  ],
+  "audioMatches": [
+    {
+      "group": "원데이 수업 이론",
+      "clip": "1.mp4",
+      "title": "금방 퍼지는 몸, 타고난 게 아닙니다.mp4",
+      "start": 117.47,
+      "end": 193.02,
+      "duration": 75.547,
+      "finalDuration": 75.56,
+      "audioCorrelation": 0.8756
+    },
+    {
+      "group": "원데이 수업 이론",
+      "clip": "2.mp4",
+      "title": "타는 느낌까지 참으면 다칩니다.mp4",
+      "start": 193.01,
+      "end": 309.77,
+      "duration": 116.764,
+      "finalDuration": 116.758,
+      "audioCorrelation": 0.9429
+    },
+    {
+      "group": "원데이 수업 이론",
+      "clip": "3.mp4",
+      "title": "숨넘어가게 안 해도 체력은 늡니다.mp4",
+      "start": 311.23,
+      "end": 430.68,
+      "duration": 119.45,
+      "finalDuration": 119.46,
+      "audioCorrelation": 0.8753
+    },
+    {
+      "group": "원데이 수업 이론",
+      "clip": "4.mp4",
+      "title": "할때 마다 최대한 하면 손해입니다.mp4",
+      "start": 430.69,
+      "end": 527.65,
+      "duration": 96.964,
+      "finalDuration": 96.976,
+      "audioCorrelation": 0.9276
+    },
+    {
+      "group": "원데이 수업 이론",
+      "clip": "5.mp4",
+      "title": "쉬는 동안에도 체력은 늘고 있습니다.mp4",
+      "start": 527.64,
+      "end": 687.15,
+      "duration": 159.509,
+      "finalDuration": 159.525,
+      "audioCorrelation": 0.8457
+    },
+    {
+      "group": "원데이 수업 이론",
+      "clip": "6.mp4",
+      "title": "케틀벨 스윙 쉬는시간 심박수 보세요.mp4",
+      "start": 687.15,
+      "end": 826.26,
+      "duration": 139.111,
+      "finalDuration": 139.109,
+      "audioCorrelation": 0.8664
+    },
+    {
+      "group": "원데이 수업 이론",
+      "clip": "7.mp4",
+      "title": "케틀벨스윙 무게 증량 기준 12분 200회.mp4",
+      "start": 826.24,
+      "end": 952.25,
+      "duration": 126.014,
+      "finalDuration": 125.999,
+      "audioCorrelation": 0.9799
+    },
+    {
+      "group": "원데이 수업 이론",
+      "clip": "8.mp4",
+      "title": "케틀벨 스윙 무게 올릴 땐 2세트씩 올리세요.mp4",
+      "start": 952.25,
+      "end": 1098.09,
+      "duration": 145.84,
+      "finalDuration": 145.848,
+      "audioCorrelation": null,
+      "note": "전체 길이 매칭은 원본 끝 경계로 신뢰도 낮음. 0/50/110초의 각 20초 창 재검증: 원본 오프셋 952.25~952.26초, 상관 0.903~0.988."
+    },
+    {
+      "group": "운동 밀당",
+      "clip": "1.mp4",
+      "title": "매번 무게 올리면  오히려 안 늡니다.mp4",
+      "start": 49.92,
+      "end": 146.76,
+      "duration": 96.837,
+      "finalDuration": 96.866,
+      "audioCorrelation": 0.9143
+    },
+    {
+      "group": "운동 밀당",
+      "clip": "2.mp4",
+      "title": "덜 하는 날이 있어야 체력이 늡니다.mp4",
+      "start": 146.75,
+      "end": 249.63,
+      "duration": 102.878,
+      "finalDuration": 102.876,
+      "audioCorrelation": 0.9063
+    },
+    {
+      "group": "운동 밀당",
+      "clip": "3.mp4",
+      "title": "부상 오는 순서는 정해져 있습니다.mp4",
+      "start": 249.64,
+      "end": 383.9,
+      "duration": 134.256,
+      "finalDuration": 134.257,
+      "audioCorrelation": 0.9016
+    },
+    {
+      "group": "운동 밀당",
+      "clip": "4.mp4",
+      "title": "피곤한 날 운동하다가  반년 쉬었습니다.mp4",
+      "start": 383.92,
+      "end": 496.57,
+      "duration": 112.646,
+      "finalDuration": 112.647,
+      "audioCorrelation": 0.882
+    },
+    {
+      "group": "운동 밀당",
+      "clip": "5.mp4",
+      "title": "무게가 안 늘면, 무게를 내리세요.mp4",
+      "start": 496.57,
+      "end": 610.85,
+      "duration": 114.279,
+      "finalDuration": 114.281,
+      "audioCorrelation": 0.9429
+    }
+  ]
+}

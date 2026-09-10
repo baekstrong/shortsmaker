@@ -77,3 +77,6 @@
 - 최신 요구사항 정본: docs/product-spec.md. 샘플 검토 상태: docs/reference-review.md.
 - AI 분할 제안 및 사용자 수정, 매번 후킹 10개와 최우선 추천, Mac 사용, 앱 단계별 완료 소리 확정. 추후 AI 일괄 분할·인코딩 모드는 확장 목표.
 - 제공된 두 폴더의 영상은 iCloud dataless 상태라 다운로드 요청 후 내용 확보 대기. 영상 실분석은 미완료.
+
+## 2026-09-10 샘플 다운로드 및 비교 완료
+- 영상28개 읽기 성공. 원데이8개·운동 밀당5개 완성 쇼츠 확인. 길이·프레임·오디오 대조는 docs/reference-review.md 및 reference-measurements.json 참조. 다음은 로컬 앱 화면 초안과 실제 배치 미리보기.
