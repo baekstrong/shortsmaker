@@ -726,3 +726,25 @@ main { margin-left:clamp(340px, 30vw, 480px); padding-left:20px; padding-right:2
 
 #editor #information-markers { margin-top:12px; }
 #editor .frame-align + .row { margin-bottom:14px; }
+
+/* Compact project controls so editing starts near the top. */
+main { padding-top:18px; }
+main > header { margin-bottom:12px; gap:12px; }
+main > header .eyebrow { font-size:9px; letter-spacing:1.5px; }
+main > header h1 { font-size:22px; margin:3px 0; }
+#project-meta { font-size:12px; margin:3px 0; }
+#settings-button { padding:7px 10px; font-size:12px; }
+.workflow-actions { padding:10px 12px; gap:12px; }
+.workflow-actions button { padding:8px 10px; font-size:12px; }
+.workflow-actions p { font-size:10px; margin:5px 0 0; }
+.individual-stages { margin:4px 0 8px; }
+.individual-stages summary { padding:5px 0; font-size:11px; }
+#job-status { display:flex; gap:8px; margin-bottom:12px; }
+#job-status .job { flex:1; min-width:0; margin:0; padding:8px 10px; font-size:11px; gap:8px; }
+#job-status .job button { padding:4px 7px; font-size:11px; }
+#job-status .job span { overflow-wrap:anywhere; }
+.work-grid > section { height:clamp(360px, calc(100dvh - 280px), 1000px); }
+@media (max-width:750px) {
+  #job-status { flex-direction:column; }
+  .work-grid > section { height:65dvh; }
+}
