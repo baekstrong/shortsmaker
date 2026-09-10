@@ -105,7 +105,7 @@
         </details>
         <div id="job-status" aria-live="polite"></div>
         <div class="work-grid">
-          <section class="clips-pane">
+          <section class="clips-pane" tabindex="0" aria-label="쇼츠 구간 목록">
             <div class="pane-heading">
               <h2>쇼츠 구간 <span id="clip-count">0</span></h2>
               <div>
@@ -116,7 +116,7 @@
             <p id="summary" class="muted"></p>
             <div id="clips"></div>
           </section>
-          <section id="hooks-pane" class="hooks-pane" hidden>
+          <section id="hooks-pane" class="hooks-pane" tabindex="0" aria-label="후킹 문구 편집" hidden>
               <div class="pane-heading">
                 <h3>후킹 문구</h3>
                 <button id="regenerate" class="quiet">10개 다시 제안 ↻</button>
@@ -142,7 +142,7 @@
                 이 문구로 확정
               </button>
           </section>
-          <section class="editor-pane">
+          <section class="editor-pane" tabindex="0" aria-label="쇼츠 구간과 화면 구도 편집">
             <div class="pane-heading">
               <h2>쇼츠 편집</h2>
               <span id="save-state" class="muted">자동 저장</span>

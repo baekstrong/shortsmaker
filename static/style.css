@@ -683,19 +683,19 @@ select:focus-visible {
 
 /* Preview above projects; hooks own the middle column. */
 .hooks-pane { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; min-width:0; }
-.sidebar { width:300px; overflow-y:auto; }
+.sidebar { width:clamp(340px, 30vw, 480px); overflow-y:auto; }
 .sidebar > * { flex-shrink:0; }
 .sidebar nav { overflow:visible; }
 .sidebar .brand { margin-bottom:20px; }
 .sidebar .preview-pane { position:static; margin-top:18px; padding:12px; }
-.sidebar .preview { max-width:190px; }
+.sidebar .preview { max-width:100%; }
 .sidebar .preview-pane h2 { font-size:15px; }
 .sidebar .preview-pane .row { flex-wrap:wrap; }
 .sidebar .preview-pane button { font-size:11px; padding:6px; }
 .sidebar .player { flex-wrap:wrap; }
-main { margin-left:300px; }
-.work-grid { grid-template-columns:minmax(160px,.75fr) minmax(260px,1.2fr) minmax(230px,1fr); }
-@media (max-width:1250px) and (min-width:751px) {
+main { margin-left:clamp(340px, 30vw, 480px); padding-left:20px; padding-right:20px; }
+.work-grid { grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr) minmax(0,1fr); gap:14px; }
+@media (max-width:1100px) and (min-width:751px) {
   .work-grid { grid-template-columns:minmax(160px,.7fr) minmax(260px,1.3fr); }
   .editor-pane { grid-column:1/-1; }
 }
@@ -705,4 +705,21 @@ main { margin-left:300px; }
   main { margin-left:0; }
   .work-grid { grid-template-columns:1fr; }
   .editor-pane { grid-column:auto; }
+}
+
+/* Each editing column scrolls without moving the other columns. */
+.work-grid > section {
+  height:clamp(360px, calc(100dvh - 420px), 800px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior-y:contain;
+  scrollbar-gutter:stable;
+  min-width:0;
+}
+.work-grid > section > .pane-heading { position:sticky; top:-18px; z-index:2; background:var(--panel); padding:8px 0; }
+#hooks { max-height:none; overflow:visible; }
+.work-grid .row { flex-wrap:wrap; }
+.work-grid .row > label { min-width:90px; }
+@media (max-width:750px) {
+  .work-grid > section { height:65dvh; min-height:360px; }
 }
