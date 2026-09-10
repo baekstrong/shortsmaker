@@ -196,3 +196,15 @@ def test_title_punctuation_uses_text_baseline(tmp_path):
                 white_y.append(y)
     assert yellow_y and white_y
     assert min(yellow_y) > min(white_y) + (max(white_y) - min(white_y)) * 0.5
+
+
+def test_auto_zoom_defaults_to_150_and_changes_only_for_confident_content():
+    from shortsmaker.framing import scene_zoom
+    def region(zoom, confidence=0.95):
+        return dict(left=0, right=1, zoom=zoom, confidence=confidence)
+    assert scene_zoom([region(1.5)]) == 1.5  # Wide regions do not force 100%.
+    assert scene_zoom([region(1.0, 0.5)]) == 1.5
+    assert scene_zoom([region(1.5), region(1.2)]) == 1.2
+    assert scene_zoom([region(1.7), region(1.7)]) == 1.7
+    assert scene_zoom([region(1.5), region(1.7)]) == 1.5
+    assert scene_zoom([]) == 1.5

@@ -1,5 +1,6 @@
 """Scene cuts + multimodal important-region estimates; conservative stable crop."""
 
+import statistics
 import math
 import json
 import hashlib
@@ -131,9 +132,12 @@ def analyze(ctx, project, clip, folder, cache_dir):
         )
         prompt = f"""첨부는 원본 가로 영상의 시간별 프레임 모음입니다. 각 프레임의 전체 가로폭을 0~1로 보세요.
 쇼츠 크롭에서 보존해야 할 중요 영역의 왼쪽 left, 오른쪽 right를 반환하세요.
-얼굴/몸/동작하는 손, 설명 중인 판서/물건/동작, 특히 화면 하단 기존 자막의 전체 글자 폭을 함께 포함하세요.
-자막을 재생성하지 않으므로 한 글자라도 자르면 안 됩니다. 관련 없는 배경까지 포함할 필요는 없습니다.
-불확실하면 넓게 잡고 confidence를 낮추세요. 여백 조금 포함, 0<=left<right<=1. confidence는 0~1.
+기본 zoom은 반드시 1.5(150%)입니다. 가로 영상을 가로폭에 맞춘 뒤 150% 확대해서 좌우를 자르는 스타일입니다.
+left/right는 주인물과 핵심 동작·설명에 필요한 판서/물건의 영역만 표시하세요. 배경이나 자막 전체 폭을 포함하지 마세요.
+zoom은 기본 1.5를 유지하세요. 핵심 인물/동작/판서가 잘려 이해가 어려울 때만 1.0~1.5로 축소하고,
+주인물이 너무 작아 핵심 표정/동작이 안 보일 때만 1.5~2.0으로 확대하세요. 배율 변경 이유를 명시하세요.
+기존 자막은 참고하되 긴 자막 한 줄을 전부 보존하려고 전체 장면을 100%로 축소하지 마세요.
+불확실하면 zoom=1.5와 confidence를 낮춰 사용자 확인을 요청하세요. 0<=left<right<=1. confidence는 0~1.
 각 FRAME 번호마다 정확히 하나 반환하고 한국어로 이유를 간결하게 쓰세요.
 FRAME 번호: {[f['index'] for f in group]}\n발언 데이터: {context}"""
         result = ai.call(
@@ -154,9 +158,10 @@ FRAME 번호: {[f['index'] for f in group]}\n발언 데이터: {context}"""
             )
         for r in result["frames"]:
             if (
-                not all(math.isfinite(r[k]) for k in ("left", "right", "confidence"))
+                not all(math.isfinite(r[k]) for k in ("left", "right", "confidence", "zoom"))
                 or not 0 <= r["left"] < r["right"] <= 1
                 or not 0 <= r["confidence"] <= 1
+                or not 1 <= r["zoom"] <= 2
             ):
                 raise ValueError("AI 구도 좌표가 올바르지 않습니다.")
             regions[r["index"]] = r
@@ -167,10 +172,10 @@ FRAME 번호: {[f['index'] for f in group]}\n발언 데이터: {context}"""
             result.append(
                 dict(
                     scene,
-                    zoom=1,
+                    zoom=1.5,
                     center=0.5,
                     review=True,
-                    reason="프레임 읽기 실패 · 전체 폭으로 보존",
+                    reason="프레임 읽기 실패 · 기본 150%, 수동 확인 필요",
                 )
             )
             continue
@@ -182,28 +187,46 @@ FRAME 번호: {[f['index'] for f in group]}\n발언 데이터: {context}"""
             if scene["start"] <= f["time"] < scene["end"]
             for b in f["boxes"]
         ]
-        if boxes:
-            left = min(left, max(0, min(b["left"] for b in boxes) - 0.025))
-            right = max(right, min(1, max(b["right"] for b in boxes) + 0.025))
         # OCR failure is surfaced, never silently presented as confident preservation.
         uncertain = caption_error or any(
             f.get("error")
             for f in captions
             if scene["start"] <= f["time"] < scene["end"]
         )
-        zoom = min(1.5, 1 / max(right - left, 0.01))
+        zoom = scene_zoom(rs)
+        center = (left + right) / 2
+        # Subtitle width warns for review; it must not silently override 150%.
+        crop_left = max(0, min(1 - 1 / zoom, center - 0.5 / zoom))
+        caption_cut = any(
+            max(0, b["left"]) < crop_left - 0.005
+            or min(1, b["right"]) > crop_left + 1 / zoom + 0.005
+            for b in boxes
+        )
         result.append(
             dict(
                 scene,
                 zoom=round(zoom, 4),
                 center=round((left + right) / 2, 4),
-                review=uncertain or min(r["confidence"] for r in rs) < 0.8,
+                review=caption_cut or uncertain or min(r["confidence"] for r in rs) < 0.8,
                 reason=(
                     "자막 영역 인식 실패 · 수동 확인 필요. "
                     if uncertain
-                    else "장면 중요 영역 + 기존 자막 폭 보정. "
+                    else "기본 150% · 핵심 내용에 필요한 경우만 배율 조정. "
                 )
+                + ("기존 자막 일부 잘림 가능 · 확인 필요. " if caption_cut else "")
                 + rs[len(rs) // 2]["reason"],
             )
         )
     return result
+
+
+def scene_zoom(regions):
+    """Use 150% unless a confident semantic framing decision requires a change."""
+    confident = [r["zoom"] for r in regions if r["confidence"] >= 0.8]
+    reductions = [z for z in confident if z < 1.5]
+    if reductions:
+        return min(reductions)
+    # Do not let a single close-up preference enlarge an otherwise normal scene.
+    if len(confident) == len(regions) and confident and all(z > 1.5 for z in confident):
+        return statistics.median(confident)
+    return 1.5

@@ -54,6 +54,7 @@ FRAME_SCHEMA = obj(
                     "left": NUMBER,
                     "right": NUMBER,
                     "confidence": NUMBER,
+                    "zoom": NUMBER,
                     "reason": TEXT,
                 }
             ),
