@@ -1,14 +1,11 @@
-"""Scene cuts + multimodal important-region estimates; conservative stable crop."""
+"""Advisory checks for cropped diagrams/text; never apply subject tracking."""
 
-import statistics
 import math
-import json
-import hashlib
-from .jobs import Cancelled
 from pathlib import Path
 import cv2
 from PIL import Image, ImageDraw
 from . import ai
+from .media import geometry
 
 
 def sample_scenes(ctx, source, clip, folder):
@@ -67,51 +64,15 @@ def sample_scenes(ctx, source, clip, folder):
         cap.release()
 
 
-def caption_bounds(ctx, project, clip, folder):
-    source = Path(__file__).resolve().parent.parent / "native/CaptionBounds.swift"
-    binary = Path(folder).resolve().parents[3] / "bin/caption-bounds"
-    binary.parent.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(
-        json.dumps(
-            [2, project["metadata"], clip["start"], clip["end"]], sort_keys=True
-        ).encode()
-    ).hexdigest()[:16]
-    target = Path(folder) / f"captions-{key}.json"
-    if target.exists():
-        return json.loads(target.read_text())
-    if not binary.exists() or binary.stat().st_mtime < source.stat().st_mtime:
-        ctx.progress("Mac 자막 영역 인식 도구 준비 중")
-        ctx.run(["swiftc", "-O", str(source), "-o", str(binary)], timeout=180)
-    ctx.progress("기존 자막의 가로 범위 확인 중 · 1초 간격")
-    ctx.run(
-        [
-            str(binary),
-            project["source"],
-            str(clip["start"]),
-            str(clip["end"]),
-            str(target),
-        ],
-        timeout=900,
-        on_line=lambda line: (
-            ctx.progress("기존 자막 범위 확인 · " + line)
-            if line.startswith("OCR")
-            else None
-        ),
-    )
-    return json.loads(target.read_text())
-
-
 def analyze(ctx, project, clip, folder, cache_dir):
     scenes, frames = sample_scenes(ctx, project["source"], clip, folder)
+    if not frames:
+        raise ValueError("정보 확인용 프레임을 읽을 수 없습니다. 원본을 확인하고 다시 시도해 주세요.")
     regions = {}
-    caption_error = False
-    try:
-        captions = caption_bounds(ctx, project, clip, folder)
-    except Cancelled:
-        raise
-    except Exception:
-        captions = []
-        caption_error = True
+    current = clip.get("manual_frame") or {"zoom": 1.5, "center": 0.5}
+    g = geometry(project["metadata"], current["zoom"], current["center"])
+    view_left = g["x"] / g["scaled_width"]
+    view_right = (g["x"] + 1080) / g["scaled_width"]
     for offset in range(0, len(frames), 6):
         group = frames[offset : offset + 6]
         sheet = Image.new("RGB", (1920, 600 * math.ceil(len(group) / 2)), "#121212")
@@ -124,22 +85,24 @@ def analyze(ctx, project, clip, folder, cache_dir):
             )
         sheet_path = Path(folder) / f"sheet-{offset}.jpg"
         sheet.save(sheet_path, quality=90)
-        ctx.progress(f"구도 분석 · 프레임 {offset+1}~{offset+len(group)}/{len(frames)}")
+        ctx.progress(f"그림·글 확인 · 프레임 {offset+1}~{offset+len(group)}/{len(frames)}")
         context = " ".join(
             s["text"]
             for s in project["transcript"]
             if s["end"] > clip["start"] and s["start"] < clip["end"]
         )
-        prompt = f"""첨부는 원본 가로 영상의 시간별 프레임 모음입니다. 각 프레임의 전체 가로폭을 0~1로 보세요.
-쇼츠 크롭에서 보존해야 할 중요 영역의 왼쪽 left, 오른쪽 right를 반환하세요.
-기본 zoom은 반드시 1.5(150%)입니다. 가로 영상을 가로폭에 맞춘 뒤 150% 확대해서 좌우를 자르는 스타일입니다.
-left/right는 주인물과 핵심 동작·설명에 필요한 판서/물건의 영역만 표시하세요. 배경이나 자막 전체 폭을 포함하지 마세요.
-zoom은 기본 1.5를 유지하세요. 핵심 인물/동작/판서가 잘려 이해가 어려울 때만 1.0~1.5로 축소하고,
-주인물이 너무 작아 핵심 표정/동작이 안 보일 때만 1.5~2.0으로 확대하세요. 배율 변경 이유를 명시하세요.
-기존 자막은 참고하되 긴 자막 한 줄을 전부 보존하려고 전체 장면을 100%로 축소하지 마세요.
-불확실하면 zoom=1.5와 confidence를 낮춰 사용자 확인을 요청하세요. 0<=left<right<=1. confidence는 0~1.
-각 FRAME 번호마다 정확히 하나 반환하고 한국어로 이유를 간결하게 쓰세요.
-FRAME 번호: {[f['index'] for f in group]}\n발언 데이터: {context}"""
+        prompt = f"""첨부 이미지의 각 FRAME은 원본 가로 영상입니다. 한국어로 답하세요.
+현재 쇼츠는 기본150%·가운데 고정이며 사용자가 직접 조정합니다. AI는 위치를 바꾸지 않고 제안만 합니다.
+현재 보이는 원본 가로 범위는 {view_left:.3f}~{view_right:.3f}입니다(전체폭0~1).
+각 FRAME에서 설명에 필요한 그림·도표·슬라이드·판서·정보성 글이 현재 범위 밖으로 잘려 이해가 어려운 경우만 information_cut=true.
+사람 얼굴·몸·손을 따라가거나 가운데에 맞추려고 제안하지 마세요. 얼굴이 가장자리에 있거나 잘려도 그것만으로 제안하지 마세요.
+기존 대사 자막의 긴 줄, 배경 책 표지·장식 글자도 제안 대상이 아닙니다. 발언 내용상 실제로 보여주는 정보여야 합니다.
+information_cut=true이면 해당 정보의 left/right와 보존할 권장zoom(1.0~2.0, 기본1.5), confidence, 한국어 이유를 반환하세요.
+필요 없으면 information_cut=false, left=0.333, right=0.667, zoom=1.5로 반환하세요.
+불확실한 정보는 confidence를 낮추고 이유에 확인 필요를 적으세요. 0<=left<right<=1, confidence는0~1.
+각 FRAME 번호마다 정확히 하나 반환하세요. 번호:{[f['index'] for f in group]}
+발언 데이터:{context}"""
+
         result = ai.call(
             ctx,
             prompt,
@@ -167,66 +130,16 @@ FRAME 번호: {[f['index'] for f in group]}\n발언 데이터: {context}"""
             regions[r["index"]] = r
     result = []
     for i, scene in enumerate(scenes):
-        rs = [regions[f["index"]] for f in frames if f["scene"] == i]
+        rs = [(f, regions[f["index"]]) for f in frames
+              if f["scene"] == i and regions[f["index"]]["information_cut"]]
         if not rs:
-            result.append(
-                dict(
-                    scene,
-                    zoom=1.5,
-                    center=0.5,
-                    review=True,
-                    reason="프레임 읽기 실패 · 기본 150%, 수동 확인 필요",
-                )
-            )
             continue
-        left = max(0, min(r["left"] for r in rs) - 0.025)
-        right = min(1, max(r["right"] for r in rs) + 0.025)
-        boxes = [
-            b
-            for f in captions
-            if scene["start"] <= f["time"] < scene["end"]
-            for b in f["boxes"]
-        ]
-        # OCR failure is surfaced, never silently presented as confident preservation.
-        uncertain = caption_error or any(
-            f.get("error")
-            for f in captions
-            if scene["start"] <= f["time"] < scene["end"]
-        )
-        zoom = scene_zoom(rs)
-        center = (left + right) / 2
-        # Subtitle width warns for review; it must not silently override 150%.
-        crop_left = max(0, min(1 - 1 / zoom, center - 0.5 / zoom))
-        caption_cut = any(
-            max(0, b["left"]) < crop_left - 0.005
-            or min(1, b["right"]) > crop_left + 1 / zoom + 0.005
-            for b in boxes
-        )
-        result.append(
-            dict(
-                scene,
-                zoom=round(zoom, 4),
-                center=round((left + right) / 2, 4),
-                review=caption_cut or uncertain or min(r["confidence"] for r in rs) < 0.8,
-                reason=(
-                    "자막 영역 인식 실패 · 수동 확인 필요. "
-                    if uncertain
-                    else "기본 150% · 핵심 내용에 필요한 경우만 배율 조정. "
-                )
-                + ("기존 자막 일부 잘림 가능 · 확인 필요. " if caption_cut else "")
-                + rs[len(rs) // 2]["reason"],
-            )
-        )
+        # One advisory card per scene, with a sampled moment to inspect.
+        f, r = max(rs, key=lambda pair: pair[1]["confidence"])
+        center = (r["left"] + r["right"]) / 2
+        direction = "왼쪽 정보 확인" if center < (view_left + view_right) / 2 - 0.05 else (
+            "오른쪽 정보 확인" if center > (view_left + view_right) / 2 + 0.05 else "확대율 확인")
+        result.append(dict(scene, time=f["time"], center=round(center, 4),
+                           zoom=r["zoom"], confidence=r["confidence"],
+                           direction=direction, reason=r["reason"]))
     return result
-
-
-def scene_zoom(regions):
-    """Use 150% unless a confident semantic framing decision requires a change."""
-    confident = [r["zoom"] for r in regions if r["confidence"] >= 0.8]
-    reductions = [z for z in confident if z < 1.5]
-    if reductions:
-        return min(reductions)
-    # Do not let a single close-up preference enlarge an otherwise normal scene.
-    if len(confident) == len(regions) and confident and all(z > 1.5 for z in confident):
-        return statistics.median(confident)
-    return 1.5

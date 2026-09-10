@@ -55,6 +55,7 @@ FRAME_SCHEMA = obj(
                     "right": NUMBER,
                     "confidence": NUMBER,
                     "zoom": NUMBER,
+                    "information_cut": {"type": "boolean"},
                     "reason": TEXT,
                 }
             ),

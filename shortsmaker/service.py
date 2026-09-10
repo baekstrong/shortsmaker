@@ -26,6 +26,7 @@ def new_clip(start, end, title="", reason=""):
         confirmed=False,
         font_size=80,
         framing=[],
+        frame_suggestions=None,
         manual_frame=None,
         render=None,
     )
@@ -57,8 +58,11 @@ def validate_clip(clip, duration):
         )
         or not 1 <= frame["zoom"] <= 2
         or not 0 <= frame["center"] <= 1
+        or not isinstance(frame.get("vertical", 0.5), (int, float))
+        or not math.isfinite(frame.get("vertical", 0.5))
+        or not 0 <= frame.get("vertical", 0.5) <= 1
     ):
-        raise ValueError("확대율이나 가로 위치가 올바르지 않습니다.")
+        raise ValueError("확대율이나 영상 위치가 올바르지 않습니다.")
 
 
 class Service:
@@ -173,7 +177,7 @@ class Service:
         p = self.store.load(pid)
         self.source(p)
         for clip in self.selected(p, args):
-            ctx.progress("장면과 중요 영역 분석 · " + clip["title"])
+            ctx.progress("그림·글 잘림 확인 · " + clip["title"])
             result = framing.analyze(
                 ctx,
                 p,
@@ -184,7 +188,7 @@ class Service:
 
             def save(project):
                 c = next(c for c in project["clips"] if c["id"] == clip["id"])
-                c.update(framing=result, manual_frame=None)
+                c.update(frame_suggestions=result)
 
             self.store.change(pid, save, history=True)
 
@@ -260,6 +264,7 @@ class Service:
                     yellow="",
                     confirmed=False,
                     framing=[],
+                    frame_suggestions=None,
                     render=None,
                 )
                 p["clips"].insert(p["clips"].index(c) + 1, second)
@@ -276,6 +281,7 @@ class Service:
                     yellow="",
                     confirmed=False,
                     framing=[],
+                    frame_suggestions=None,
                     render=None,
                 )
                 p["clips"].pop(i + 1)
@@ -298,7 +304,7 @@ class Service:
                     k in changes and changes[k] != c[k] for k in ("start", "end")
                 )
                 if bounds:
-                    c.update(hooks=[], confirmed=False, framing=[])
+                    c.update(hooks=[], confirmed=False, framing=[], frame_suggestions=None)
                     changes["confirmed"] = False
                 c.update(changes)
             else:

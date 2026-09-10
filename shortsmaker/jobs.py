@@ -240,7 +240,7 @@ class Jobs:
                 label = {
                     "analyze": "내용 분석·분할",
                     "hooks": "후킹 후보 생성",
-                    "framing": "자동 구도 분석",
+                    "framing": "그림·글 조정 제안",
                     "encode": "쇼츠 인코딩",
                     "schedule": "발행 예약",
                     "refresh": "예약 상태 확인·정리",

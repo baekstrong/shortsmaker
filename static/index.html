@@ -54,7 +54,7 @@
         <div class="steps">
           <button data-stage="analyze">01 <span>내용 분석·분할</span></button
           ><button data-stage="hooks">02 <span>후킹 제안</span></button
-          ><button data-stage="framing">03 <span>자동 구도</span></button
+          ><button data-stage="framing">03 <span>화면 조정 제안</span></button
           ><button data-stage="encode">04 <span>쇼츠 인코딩</span></button
           ><button id="schedule-open">05 <span>발행 예약</span></button>
         </div>
@@ -77,7 +77,7 @@
               <span class="badge">1080 × 1920</span>
             </div>
             <div id="preview" class="preview">
-              <video id="video" playsinline preload="metadata"></video
+              <video id="video" playsinline preload="metadata" tabindex="0" aria-label="영상 위치 조정: 마우스로 드래그하거나 방향키 사용"></video
               ><img id="title-image" alt="후킹 문구 미리보기" />
               <div id="preview-placeholder">구간을 선택해 주세요</div>
             </div>
@@ -94,6 +94,12 @@
               /><span id="time">00:00</span>
             </div>
             <div id="frame-info" class="muted"></div>
+            <p class="muted">영상을 드래그해 위치 조정 · 쇼츠 구간 전체에 고정</p>
+            <div class="row frame-align" aria-label="영상 정렬">
+              <button data-align="0">왼쪽 정렬</button>
+              <button data-align="0.5">가운데 정렬</button>
+              <button data-align="1">오른쪽 정렬</button>
+            </div>
             <div class="row">
               <button id="download">완성 영상 보기</button
               ><button id="reveal" class="quiet">폴더 열기 ↗</button>
@@ -157,15 +163,13 @@
               <hr />
               <div class="pane-heading">
                 <h3>화면 구도</h3>
-                <button id="auto-frame" class="quiet">AI 자동 보정</button>
+                <button id="auto-frame" class="quiet">그림·글 확인</button>
               </div>
-              <label class="check"
-                ><input id="manual-frame" type="checkbox" /> 직접 위치·확대율
-                조정</label
-              ><label
+              <button id="reset-frame" class="quiet">150% · 중앙 기본값으로</button>
+              <label
                 >확대율 <output id="zoom-label">150%</output
                 ><input
-                  id="zoom"
+                  id="zoom" aria-label="확대율"
                   type="range"
                   min="1"
                   max="2"
@@ -174,7 +178,7 @@
               ><label
                 >가로 중심 <output id="center-label">50%</output
                 ><input
-                  id="center"
+                  id="center" aria-label="가로 중심"
                   type="range"
                   min="0"
                   max="1"
@@ -182,9 +186,10 @@
                   value="0.5"
               /></label>
               <p class="muted">
-                기존 자막을 그대로 사용합니다. 자동 구도도 최종 미리보기에서
-                확인해 주세요.
+                기본은 150%·중앙 고정입니다. AI는 그림·글이 잘리는 구간만
+                제안하며 위치를 자동으로 바꾸지 않습니다.
               </p>
+              <div id="frame-suggestions" aria-live="polite"></div>
             </div>
           </section>
         </div>

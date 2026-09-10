@@ -1,16 +1,16 @@
-"""Actual FFmpeg regression: scene boundaries must not accumulate AAC delay."""
+"""Actual FFmpeg regression: old scene metadata cannot move the new fixed frame."""
 
 import subprocess
 import shutil
 import numpy as np
 import pytest
-from shortsmaker.media import probe, export_clip
+from shortsmaker.media import probe, export_clip, geometry
 from shortsmaker.service import new_clip
 from shortsmaker.jobs import Jobs, Context
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="FFmpeg required")
-def test_multiscene_render_retains_continuous_audio_timing(tmp_path):
+def test_fixed_render_retains_continuous_audio_timing(tmp_path):
     source = tmp_path / "source.mp4"
     subprocess.run(
         [
@@ -41,6 +41,7 @@ def test_multiscene_render_retains_continuous_audio_timing(tmp_path):
         hook="싱크 확인",
         yellow="싱크",
         confirmed=True,
+        manual_frame=dict(zoom=1.5, center=0.3, vertical=0.6),
         framing=[
             dict(start=0.5 + i * 0.5, end=1 + i * 0.5, zoom=1.5, center=0.5)
             for i in range(6)
@@ -50,6 +51,18 @@ def test_multiscene_render_retains_continuous_audio_timing(tmp_path):
     job = {"id": "test-render", "status": "running", "created_at": "now"}
     jobs.items[job["id"]] = job
     result = export_clip(Context(jobs, job), p, c, tmp_path)
+
+    # The exported vertical position must match the preview geometry.
+    frame_path = tmp_path / "frame.png"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", result["path"],
+                    "-frames:v", "1", str(frame_path)], check=True)
+    from PIL import Image
+    pixels = np.asarray(Image.open(frame_path))
+    blue = (pixels[:, :, 2] > 150) & (pixels[:, :, 0] < 80) & (pixels[:, :, 1] < 80)
+    rows = np.where(blue[:, 540])[0]
+    g = geometry(p["metadata"], **c["manual_frame"])
+    assert abs(rows.min() - g["y"]) <= 2
+    assert abs(rows.max() - (g["y"] + g["scaled_height"] - 1)) <= 2
 
     def samples(path, start, duration):
         out = subprocess.run(
@@ -81,7 +94,7 @@ def test_multiscene_render_retains_continuous_audio_timing(tmp_path):
 
     x = samples(source, 0.5, 3)
     y = samples(result["path"], 0, 3)
-    # Late window spans five scene boundaries; old per-scene AAC accumulated >100ms.
+    # Late audio must stay aligned even when legacy scene metadata is present.
     at, size = 150, 100
     scores = [
         np.corrcoef(x[at + lag : at + lag + size], y[at : at + size])[0, 1]

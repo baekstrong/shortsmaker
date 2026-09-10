@@ -73,14 +73,47 @@ def test_geometry_and_title_wrap(tmp_path):
         title_image("제목", "없는 구절", target)
 
 
-def test_scene_clamping_covers_modified_clip():
+def test_legacy_ai_movement_is_ignored_and_manual_position_is_static():
     c = new_clip(20, 110)
-    c["framing"] = [dict(start=30, end=90, zoom=1.2, center=0.6)]
-    assert [(s["start"], s["end"]) for s in scenes_for(c)] == [
-        (20, 30),
-        (30, 90),
-        (90, 110),
-    ]
+    c["framing"] = [dict(start=30, end=90, zoom=1.2, center=0.1, end_center=0.9)]
+    assert scenes_for(c) == [dict(start=20, end=110, zoom=1.5, center=0.5)]
+    c["manual_frame"] = dict(zoom=1.7, center=0.8, vertical=0.4)
+    assert scenes_for(c) == [dict(start=20, end=110, **c["manual_frame"])]
+    from shortsmaker.media import video_filter
+    assert "pad=1080:1920:0:" in video_filter(dict(width=1920, height=1080), scenes_for(c)[0])
+
+
+def test_information_suggestions_never_change_render_or_manual_edit(tmp_path, monkeypatch):
+    from shortsmaker import framing
+    store, p = project(tmp_path)
+    jobs = Jobs(tmp_path)
+    service = Service(store, jobs)
+    c = new_clip(0, 10)
+    c["manual_frame"] = dict(zoom=1.6, center=0.3, vertical=0.6)
+    p = store.change(p["id"], lambda p: p.update(clips=[c]))
+    key = render_key(p, c)
+    proposal = [dict(start=0, end=10, time=5, center=0.8, zoom=1.2,
+                     direction="오른쪽 정보 확인", confidence=0.9, reason="판서 잘림")]
+    monkeypatch.setattr(framing, "analyze", lambda *args: proposal)
+    monkeypatch.setattr(service, "source", lambda p: None)
+    class Context:
+        def progress(self, *args): pass
+    service.framing(Context(), p["id"], {})
+    updated = store.load(p["id"])
+    assert updated["clips"][0]["manual_frame"] == c["manual_frame"]
+    assert updated["clips"][0]["frame_suggestions"] == proposal
+    assert render_key(updated, updated["clips"][0]) == key
+
+
+def test_vertical_placement_and_validation(tmp_path):
+    from shortsmaker.service import validate_clip
+    meta = dict(width=1920, height=1080)
+    assert geometry(meta, vertical=0)["y"] == 0
+    assert geometry(meta, vertical=1)["y"] == 1008
+    assert geometry(meta, vertical=0.5)["y"] == 504
+    c = new_clip(0, 10)
+    c["manual_frame"] = dict(zoom=1.5, center=0.5, vertical=float("nan"))
+    with pytest.raises(ValueError): validate_clip(c, 10)
 
 
 def test_retention_waits_for_every_channel_success_plus_14_days():
@@ -196,15 +229,3 @@ def test_title_punctuation_uses_text_baseline(tmp_path):
                 white_y.append(y)
     assert yellow_y and white_y
     assert min(yellow_y) > min(white_y) + (max(white_y) - min(white_y)) * 0.5
-
-
-def test_auto_zoom_defaults_to_150_and_changes_only_for_confident_content():
-    from shortsmaker.framing import scene_zoom
-    def region(zoom, confidence=0.95):
-        return dict(left=0, right=1, zoom=zoom, confidence=confidence)
-    assert scene_zoom([region(1.5)]) == 1.5  # Wide regions do not force 100%.
-    assert scene_zoom([region(1.0, 0.5)]) == 1.5
-    assert scene_zoom([region(1.5), region(1.2)]) == 1.2
-    assert scene_zoom([region(1.7), region(1.7)]) == 1.7
-    assert scene_zoom([region(1.5), region(1.7)]) == 1.5
-    assert scene_zoom([]) == 1.5

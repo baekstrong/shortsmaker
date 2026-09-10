@@ -625,3 +625,11 @@ select:focus-visible {
     max-width: min(365px, calc((100vh - 220px) * 9 / 16));
   }
 }
+
+.preview video { cursor: grab; touch-action: none; user-select: none; }
+.preview video.dragging { cursor: grabbing; }
+.frame-align { flex-wrap: wrap; margin: 10px 0; }
+.frame-align button { flex: 1; font-size: 11px; padding: 7px; }
+.frame-suggestion { border-top: 1px solid var(--line); padding: 12px 0; font-size: 12px; }
+.frame-suggestion button { white-space: normal; text-align: left; }
+.frame-suggestion small { color: var(--muted); }

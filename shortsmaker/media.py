@@ -77,7 +77,7 @@ def probe(path):
     )
 
 
-def geometry(metadata, zoom=1.5, center=0.5, end_center=None):
+def geometry(metadata, zoom=1.5, center=0.5, end_center=None, vertical=0.5):
     # Retain the entire source height and black title/footer space.
     max_zoom = min(2.0, 1080 * metadata["width"] / (WIDTH * metadata["height"]))
     zoom = max(1.0, min(float(zoom), max_zoom))
@@ -98,7 +98,7 @@ def geometry(metadata, zoom=1.5, center=0.5, end_center=None):
         scaled_height=sh,
         x=x,
         end_x=offset(center if end_center is None else end_center),
-        y=((HEIGHT - sh) // 4) * 2,
+        y=math.floor((HEIGHT - sh) * max(0, min(1, vertical)) / 2) * 2,
     )
 
 
@@ -152,7 +152,7 @@ def title_image(text, yellow, path, font_size=80):
 
 def render_key(project, clip):
     payload = {
-        "version": 4,
+        "version": 5,
         "source": project["metadata"],
         "path": project["source"],
         "clip": {
@@ -165,7 +165,6 @@ def render_key(project, clip):
                 "hook",
                 "yellow",
                 "font_size",
-                "framing",
                 "manual_frame",
             )
         },
@@ -178,33 +177,16 @@ def render_key(project, clip):
 def scenes_for(clip):
     if clip.get("manual_frame"):
         return [dict(start=clip["start"], end=clip["end"], **clip["manual_frame"])]
-    scenes = clip.get("framing") or [
-        dict(start=clip["start"], end=clip["end"], zoom=1.5, center=0.5)
-    ]
-    result, cursor = [], clip["start"]
-    for s in sorted(scenes, key=lambda s: s["start"]):
-        a, b = max(clip["start"], s["start"]), min(clip["end"], s["end"])
-        if b <= a:
-            continue
-        if a > cursor + 0.001:
-            result.append(dict(start=cursor, end=a, zoom=1.5, center=0.5))
-        a = max(a, cursor)
-        if b > a:
-            result.append(dict(s, start=a, end=b))
-            cursor = b
-    if cursor < clip["end"] - 0.001:
-        result.append(dict(start=cursor, end=clip["end"], zoom=1.5, center=0.5))
-    return result
+    # AI analysis is advisory only. Never animate or apply old automatic crops.
+    return [dict(start=clip["start"], end=clip["end"], zoom=1.5, center=0.5)]
 
 
 def video_filter(meta, scene, title_input="1:v"):
     g = geometry(
-        meta, scene.get("zoom", 1.5), scene.get("center", 0.5), scene.get("end_center")
+        meta, scene.get("zoom", 1.5), scene.get("center", 0.5),
+        vertical=scene.get("vertical", 0.5)
     )
-    duration = scene["end"] - scene["start"]
-    # Smoothstep pan; static when equal, resets at scene cuts.
-    u = f"min(t/{duration:.6f},1)"
-    x = f"{g['x']:.5f}+({g['end_x']-g['x']:.5f})*({u})*({u})*(3-2*({u}))"
+    x = str(g["x"])  # One fixed position for the entire short.
     hdr = (
         (
             "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"

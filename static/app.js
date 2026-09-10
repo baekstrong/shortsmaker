@@ -30,6 +30,8 @@ let channels = [],
   audio = null,
   mutating = false,
   polling = false;
+let frameDraft = null;
+let dragging = null;
 let sound = localStorage.getItem("sound") !== "off";
 const seen = new Set(JSON.parse(localStorage.getItem("seenJobs") || "[]"));
 const project = () => state.projects.find((p) => p.id === pid);
@@ -130,6 +132,7 @@ async function refresh() {
   }
 }
 function selectProject(id) {
+  cancelDrag();
   pid = id;
   cid = null;
   shownRevision = -1;
@@ -161,7 +164,7 @@ function render() {
   $("clips").innerHTML = p.clips
     .map(
       (c, i) =>
-        `<article tabindex="0" role="button" data-clip="${c.id}" class="clip-card ${c.id === cid ? "active" : ""} ${!c.included ? "excluded" : ""}"><div class="row"><span class="badge">SHORT ${String(i + 1).padStart(2, "0")}</span><input type="checkbox" data-include="${c.id}" ${c.included ? "checked" : ""} aria-label="${i + 1}번 쇼츠 작업에 포함" ${busy() ? "disabled" : ""}></div><h3>${esc(c.title)}</h3><small>${time(c.start)} – ${time(c.end)} · ${(c.end - c.start).toFixed(1)}초</small><div><small class="${c.end - c.start > 180 ? "warning" : ""}">${c.end - c.start > 180 ? "3분 초과 · 추가 분할 필요" : c.confirmed ? "✓ 문구 확정" : "문구 확인 대기"}${c.framing.some((f) => f.review) ? " · 구도 확인 필요" : ""}</small></div></article>`,
+        `<article tabindex="0" role="button" data-clip="${c.id}" class="clip-card ${c.id === cid ? "active" : ""} ${!c.included ? "excluded" : ""}"><div class="row"><span class="badge">SHORT ${String(i + 1).padStart(2, "0")}</span><input type="checkbox" data-include="${c.id}" ${c.included ? "checked" : ""} aria-label="${i + 1}번 쇼츠 작업에 포함" ${busy() ? "disabled" : ""}></div><h3>${esc(c.title)}</h3><small>${time(c.start)} – ${time(c.end)} · ${(c.end - c.start).toFixed(1)}초</small><div><small class="${c.end - c.start > 180 ? "warning" : ""}">${c.end - c.start > 180 ? "3분 초과 · 추가 분할 필요" : c.confirmed ? "✓ 문구 확정" : "문구 확인 대기"}${c.frame_suggestions?.length ? " · 화면 조정 제안 있음" : ""}</small></div></article>`,
     )
     .join("");
   const relevant = state.jobs.filter((j) => j.project_id === pid).slice(0, 2);
@@ -172,7 +175,7 @@ function render() {
     )
     .join("");
   for (const b of document.querySelectorAll(
-    "[data-stage],#schedule-open,#add-clip,#undo",
+    "[data-stage],#schedule-open,#add-clip,#undo,[data-align]",
   ))
     b.disabled = busy();
   if ((shownRevision !== p.revision || shownBusy !== busy()) && !mutating) {
@@ -226,18 +229,34 @@ function renderEditor() {
         `<button class="hook-option ${i === c.recommended_index ? "recommended" : ""} ${h.text === c.hook ? "selected" : ""}" data-hook="${i}">${i === c.recommended_index ? "<strong>✦ AI 추천</strong>" : ""}${esc(h.text)}</button>`,
     )
     .join("");
-  $("manual-frame").checked = !!c.manual_frame;
-  const f = c.manual_frame || c.framing[0] || { zoom: 1.5, center: 0.5 };
+  const f = activeFrame();
   fieldValue("zoom", f.zoom);
   fieldValue("center", f.center);
-  $("zoom").disabled = $("center").disabled = !c.manual_frame;
   $("zoom-label").value = Math.round(f.zoom * 100) + "%";
   $("center-label").value = Math.round(f.center * 100) + "%";
+  $("frame-suggestions").innerHTML = !Array.isArray(c.frame_suggestions)
+    ? '<p class="muted">그림·글 확인을 실행하면 조정이 필요한 구간을 제안합니다.</p>'
+    : c.frame_suggestions.length ? c.frame_suggestions.map((s, i) =>
+      `<div class="frame-suggestion"><button data-inspect="${i}">${time(s.time)} · ${esc(s.direction)}</button><p>${esc(s.reason)}</p><small>제안 배율 ${Math.round(s.zoom * 100)}%${s.confidence < 0.8 ? " · 판단 불확실" : ""} · 자동 적용 안 함</small></div>`).join("")
+    : '<p class="muted">그림·글 조정 제안이 없습니다. 필요하면 직접 위치를 조정하세요.</p>';
   $("title-image").src =
     `/api/projects/${pid}/clips/${c.id}/title.png?v=${project().revision}`;
   for (const el of $("editor").querySelectorAll("button,input,textarea"))
     if (busy()) el.disabled = true;
-    else if (!["zoom", "center"].includes(el.id)) el.disabled = false;
+    else el.disabled = false;
+}
+function activeFrame() {
+  if (frameDraft?.pid === pid && frameDraft?.cid === cid) return frameDraft.frame;
+  return clip()?.manual_frame || { zoom: 1.5, center: 0.5, vertical: 0.5 };
+}
+function frameGeometry(frame) {
+  const m = project().metadata;
+  const z = Math.max(1, Math.min(frame.zoom, 2, m.width / m.height));
+  const sw = Math.round(1080 * z / 2) * 2;
+  const sh = Math.round(sw * m.height / m.width / 2) * 2;
+  const x = Math.floor(Math.max(0, Math.min(sw - 1080, frame.center * sw - 540)) / 2) * 2;
+  const y = Math.floor((1920 - sh) * (frame.vertical ?? 0.5) / 2) * 2;
+  return { z, sw, sh, x, y };
 }
 function updatePreview() {
   const p = project(),
@@ -245,32 +264,20 @@ function updatePreview() {
     v = $("video");
   if (!p || !c) return;
   const t = v.currentTime;
-  const s = c.manual_frame ||
-    c.framing.find((s) => t >= s.start && t < s.end) || {
-      zoom: 1.5,
-      center: 0.5,
-    };
-  const z = Math.max(
-    1,
-    Math.min(s.zoom, 2, p.metadata.width / p.metadata.height),
-  );
-  const sw = Math.round((1080 * z) / 2) * 2,
-    sh = Math.round((sw * p.metadata.height) / p.metadata.width / 2) * 2;
-  const center = s.center ?? 0.5;
-  const x =
-    Math.floor(Math.max(0, Math.min(sw - 1080, center * sw - 540)) / 2) * 2;
+  const s = activeFrame();
+  const { z, sw, sh, x, y } = frameGeometry(s);
   const ratio = $("preview").clientWidth / 1080;
   v.style.width = sw * ratio + "px";
   v.style.height = sh * ratio + "px";
   v.style.left = -x * ratio + "px";
-  v.style.top = Math.floor((1920 - sh) / 4) * 2 * ratio + "px";
+  v.style.top = y * ratio + "px";
   $("seek").min = c.start;
   $("seek").max = c.end;
   $("seek").value = Math.max(c.start, Math.min(c.end, t));
   $("time").textContent =
     `${time(Math.max(0, t - c.start))} / ${time(c.end - c.start)}`;
   $("frame-info").textContent =
-    `${Math.round(z * 100)}% · ${c.manual_frame ? "직접 조정" : c.framing.length ? "AI 장면별 구도" : "중앙 기본 구도"}${s.review ? " · 확인 필요" : ""}`;
+    `${Math.round(z * 100)}% · ${c.manual_frame || frameDraft ? "직접 조정 · 구간 전체 고정" : "중앙 고정"}`;
 }
 let editQueue = Promise.resolve();
 function edit(action, extra = {}) {
@@ -330,6 +337,7 @@ $("clips").onclick = safe(async (e) => {
   }
   const card = e.target.closest("[data-clip]");
   if (card) {
+    cancelDrag();
     cid = card.dataset.clip;
     shownRevision = -1;
     $("video").currentTime = clip().start;
@@ -446,26 +454,93 @@ $("regenerate").onclick = safe(() =>
   run("hooks", { clip_ids: [cid], fresh: true }),
 );
 $("auto-frame").onclick = safe(() => run("framing", { clip_ids: [cid] }));
-$("manual-frame").onchange = safe(() =>
-  change({
-    manual_frame: $("manual-frame").checked
-      ? { zoom: Number($("zoom").value), center: Number($("center").value) }
-      : null,
-  }),
-);
+async function saveFrame(frame) {
+  if (!clip() || busy()) return;
+  const draft = { pid, cid, frame: frame || { zoom: 1.5, center: 0.5, vertical: 0.5 } };
+  frameDraft = draft;
+  updatePreview();
+  try {
+    await change({ manual_frame: frame });
+  } finally {
+    if (frameDraft === draft) frameDraft = null;
+    shownRevision = -1;
+    render();
+  }
+}
+$("reset-frame").onclick = safe(() => saveFrame(null));
+for (const b of document.querySelectorAll("[data-align]")) {
+  b.onclick = safe(() => {
+    const center = Number(b.dataset.align);
+    return saveFrame({ ...activeFrame(), center,
+      ...(center === 0.5 ? { vertical: 0.5 } : {}) });
+  });
+}
 for (const id of ["zoom", "center"]) {
   $(id).oninput = () => {
+    if (!clip() || busy()) return;
+    frameDraft = { pid, cid, frame: { ...activeFrame(), [id]: Number($(id).value) } };
     $(id + "-label").value = Math.round(Number($(id).value) * 100) + "%";
+    updatePreview();
   };
-  $(id).onchange = safe(() =>
-    change({
-      manual_frame: {
-        zoom: Number($("zoom").value),
-        center: Number($("center").value),
-      },
-    }),
-  );
+  $(id).onchange = safe(() => saveFrame({ ...activeFrame(), [id]: Number($(id).value) }));
 }
+$("frame-suggestions").onclick = (e) => {
+  const b = e.target.closest("[data-inspect]");
+  if (!b || busy()) return;
+  const s = clip().frame_suggestions[Number(b.dataset.inspect)];
+  $("video").pause();
+  $("video").currentTime = s.time;
+  $("preview").scrollIntoView({ block: "center", behavior: "smooth" });
+  updatePreview();
+};
+$("video").onpointerdown = (e) => {
+  if (e.button !== 0 || !clip() || busy() || mutating || frameDraft) return;
+  e.preventDefault();
+  $("video").pause();
+  $("video").focus({ preventScroll: true });
+  dragging = { pointer: e.pointerId, pid, cid, startX: e.clientX, startY: e.clientY,
+    frame: { ...activeFrame() }, geometry: frameGeometry(activeFrame()),
+    ratio: $("preview").clientWidth / 1080 };
+  $("video").setPointerCapture(e.pointerId);
+  $("video").classList.add("dragging");
+};
+$("video").onpointermove = (e) => {
+  if (!dragging || dragging.pointer !== e.pointerId) return;
+  if (dragging.pid !== pid || dragging.cid !== cid || busy()) return cancelDrag();
+  const d = dragging, g = d.geometry;
+  const x = Math.max(0, Math.min(g.sw - 1080, g.x - (e.clientX - d.startX) / d.ratio));
+  const y = Math.max(0, Math.min(1920 - g.sh, g.y + (e.clientY - d.startY) / d.ratio));
+  frameDraft = { pid, cid, frame: { ...d.frame,
+    center: (x + 540) / g.sw, vertical: y / (1920 - g.sh) } };
+  updatePreview();
+};
+function cancelDrag() {
+  if (!dragging) return;
+  const pointer = dragging.pointer;
+  dragging = null;
+  frameDraft = null;
+  if ($("video").hasPointerCapture(pointer)) $("video").releasePointerCapture(pointer);
+  $("video").classList.remove("dragging");
+  updatePreview();
+}
+$("video").onpointerup = safe(async (e) => {
+  if (!dragging || dragging.pointer !== e.pointerId) return;
+  const frame = frameDraft?.frame;
+  const sameClip = dragging.pid === pid && dragging.cid === cid;
+  cancelDrag();
+  if (frame && sameClip) await saveFrame(frame);
+});
+$("video").onpointercancel = cancelDrag;
+$("video").onlostpointercapture = cancelDrag;
+$("video").onkeydown = safe(async (e) => {
+  if (e.key === "Escape") return cancelDrag();
+  if (!clip() || busy() || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
+  e.preventDefault();
+  const f = activeFrame(), step = e.shiftKey ? 0.05 : 0.01;
+  const center = Math.max(0, Math.min(1, f.center + (e.key === "ArrowLeft" ? step : e.key === "ArrowRight" ? -step : 0)));
+  const vertical = Math.max(0, Math.min(1, (f.vertical ?? 0.5) + (e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0)));
+  await saveFrame({ ...f, center, vertical });
+});
 $("play").onclick = safe(async () => {
   const c = clip(),
     v = $("video");
