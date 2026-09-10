@@ -74,3 +74,12 @@
 - 업로드 및 Buffer 예약 성공 후에는 Mac이 꺼져 있어도 미디어 URL 유지. 분석·인코딩·업로드와 로컬 정리는 Mac 실행 필요.
 - 개발 전 순서 제안: AI 호출 경로 확정·최소 호출 → R2 계정/도메인 연결 → R2 영상 URL로 Buffer 예약·즉시삭제 재검증 → 앱 구현.
 - 공식 출처: https://developers.openai.com/api/docs/models/gpt-6-astra , https://learn.chatgpt.com/docs/auth , https://developers.cloudflare.com/r2/pricing/ , https://developers.cloudflare.com/r2/buckets/public-buckets/ (2026-09-10 확인).
+
+## AI 방식 확정 및 R2 비용 검토 (2026-09-10)
+- 사용자 확정: AI는 기존 Codex 구독 로그인 방식으로 진행. 앞선 Responses API 직접 호출 권고는 채택하지 않는다. 기본 Astra medium 및 모델 선택 유지.
+- R2 선택은 비용 검토 중이며 생성·결제 설정은 아직 하지 않았다.
+- 실측 완성 쇼츠13개 평균41.183MB, 범위28.215~61.042MB. 보수적 계산은 개당50MB.
+- R2 Standard: 월10GB-month 저장·쓰기100만·읽기1000만 요청 무료, 인터넷 전송 무료. 초과 저장$0.015/GB-month, 쓰기$4.50/100만, 읽기$0.36/100만 (단위 올림 적용).
+- 50MB 영상이 한 달 내내 일정 수량 보관된 가정:100개5GB=$0,200개10GB=$0,500개25GB=$0.225(약$0.23),1000개50GB=$0.60 저장료. 요청 무료량 이내·동일 계정 다른 R2 사용 없음 가정. 도메인·세금·별도 서비스 비용 제외.
+- 같은 파일 URL을 두 채널에서 사용하므로 영상 저장 용량은 두 배가 되지 않는다. 발행 확인 후 보관기간을 두고 정리하면 누적 용량을 제한할 수 있다.
+- 출처: https://developers.cloudflare.com/r2/pricing/ 및 docs/reference-measurements.json의 완성본 경로 파일 크기 실측.
