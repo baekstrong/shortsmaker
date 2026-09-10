@@ -209,6 +209,7 @@ function fieldValue(id, value) {
 function renderEditor() {
   const c = clip();
   $("editor").hidden = !c;
+  $("hooks-pane").hidden = !c;
   $("editor-empty").hidden = !!c;
   $("preview-placeholder").hidden = !!c;
   $("download").disabled = !c || !c.render_current;
@@ -261,7 +262,7 @@ function renderEditor() {
   $("information-markers").innerHTML = regions.map((s,i) => `<button data-inspect="${i}" title="${esc(s.subject || s.reason)}">${time(s.start-c.start)}–${time(s.end-c.start)} 설명</button>`).join("");
   $("title-image").src =
     `/api/projects/${pid}/clips/${c.id}/title.png?v=${project().revision}`;
-  for (const el of $("editor").querySelectorAll("button,input,textarea"))
+  for (const el of document.querySelectorAll("#editor button,#editor input,#editor textarea,#hooks-pane button,#hooks-pane input,#hooks-pane textarea"))
     if (busy()) el.disabled = true;
     else el.disabled = false;
 }

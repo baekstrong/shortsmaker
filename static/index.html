@@ -12,6 +12,43 @@
       <a class="brand" href="/"
         >shorts<span>maker</span><small>LOCAL STUDIO</small></a
       ><button id="new-project" class="primary wide">＋ 롱폼 불러오기</button>
+          <section class="preview-pane">
+            <div class="pane-heading">
+              <h2>미리보기</h2>
+              <span class="badge">1080 × 1920</span>
+            </div>
+            <div id="preview" class="preview">
+              <video id="video" playsinline preload="metadata" tabindex="0" aria-label="영상 위치 조정: 마우스로 드래그하거나 방향키 사용"></video
+              ><img id="title-image" alt="후킹 문구 미리보기" />
+              <div id="preview-placeholder">구간을 선택해 주세요</div>
+            </div>
+            <div class="player">
+              <button id="play" aria-label="재생 또는 일시정지">▶</button
+              ><input
+                id="seek"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value="0"
+                aria-label="영상 탐색"
+              /><span id="time">00:00</span>
+            </div>
+            <div id="information-markers" class="information-markers" aria-label="설명 화면 구간"></div>
+            <div id="frame-info" class="muted"></div>
+            <div id="frame-scope" class="frame-scope"></div>
+            <button id="whole-frame" class="quiet" hidden>쇼츠 전체 위치 편집으로</button>
+            <p class="muted">설명 구간을 선택하면 그 구간만 위치를 조정합니다.</p>
+            <div class="row frame-align" aria-label="영상 정렬">
+              <button data-align="0">왼쪽 정렬</button>
+              <button data-align="0.5">가운데 정렬</button>
+              <button data-align="1">오른쪽 정렬</button>
+            </div>
+            <div class="row">
+              <button id="download">완성 영상 보기</button
+              ><button id="reveal" class="quiet">폴더 열기 ↗</button>
+            </div>
+          </section>
       <div class="section-label">내 프로젝트</div>
       <nav id="projects"></nav>
       <div class="sidebar-bottom">
@@ -79,42 +116,31 @@
             <p id="summary" class="muted"></p>
             <div id="clips"></div>
           </section>
-          <section class="preview-pane">
-            <div class="pane-heading">
-              <h2>미리보기</h2>
-              <span class="badge">1080 × 1920</span>
-            </div>
-            <div id="preview" class="preview">
-              <video id="video" playsinline preload="metadata" tabindex="0" aria-label="영상 위치 조정: 마우스로 드래그하거나 방향키 사용"></video
-              ><img id="title-image" alt="후킹 문구 미리보기" />
-              <div id="preview-placeholder">구간을 선택해 주세요</div>
-            </div>
-            <div class="player">
-              <button id="play" aria-label="재생 또는 일시정지">▶</button
-              ><input
-                id="seek"
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value="0"
-                aria-label="영상 탐색"
-              /><span id="time">00:00</span>
-            </div>
-            <div id="information-markers" class="information-markers" aria-label="설명 화면 구간"></div>
-            <div id="frame-info" class="muted"></div>
-            <div id="frame-scope" class="frame-scope"></div>
-            <button id="whole-frame" class="quiet" hidden>쇼츠 전체 위치 편집으로</button>
-            <p class="muted">설명 구간을 선택하면 그 구간만 위치를 조정합니다.</p>
-            <div class="row frame-align" aria-label="영상 정렬">
-              <button data-align="0">왼쪽 정렬</button>
-              <button data-align="0.5">가운데 정렬</button>
-              <button data-align="1">오른쪽 정렬</button>
-            </div>
-            <div class="row">
-              <button id="download">완성 영상 보기</button
-              ><button id="reveal" class="quiet">폴더 열기 ↗</button>
-            </div>
+          <section id="hooks-pane" class="hooks-pane" hidden>
+              <div class="pane-heading">
+                <h3>후킹 문구</h3>
+                <button id="regenerate" class="quiet">10개 다시 제안 ↻</button>
+              </div>
+              <p id="recommendation" class="muted"></p>
+              <div id="hooks"></div>
+              <label
+                >최종 문구 <small>줄바꿈으로 두 줄 배치</small
+                ><textarea id="hook" rows="2" maxlength="100"></textarea></label
+              ><label
+                >노란색으로 강조할 구절<input
+                  id="yellow"
+                  placeholder="문구에 포함된 단어·구절" /></label
+              ><label
+                >글자 크기
+                <input
+                  id="font-size"
+                  type="range"
+                  min="40"
+                  max="100"
+                  value="80" /></label
+              ><button id="confirm-hook" class="primary wide">
+                이 문구로 확정
+              </button>
           </section>
           <section class="editor-pane">
             <div class="pane-heading">
@@ -177,30 +203,6 @@
               </p>
               <div id="frame-suggestions" aria-live="polite"></div>
               <hr />
-              <div class="pane-heading">
-                <h3>후킹 문구</h3>
-                <button id="regenerate" class="quiet">10개 다시 제안 ↻</button>
-              </div>
-              <p id="recommendation" class="muted"></p>
-              <div id="hooks"></div>
-              <label
-                >최종 문구 <small>줄바꿈으로 두 줄 배치</small
-                ><textarea id="hook" rows="2" maxlength="100"></textarea></label
-              ><label
-                >노란색으로 강조할 구절<input
-                  id="yellow"
-                  placeholder="문구에 포함된 단어·구절" /></label
-              ><label
-                >글자 크기
-                <input
-                  id="font-size"
-                  type="range"
-                  min="40"
-                  max="100"
-                  value="80" /></label
-              ><button id="confirm-hook" class="primary wide">
-                이 문구로 확정
-              </button>
             </div>
           </section>
         </div>
