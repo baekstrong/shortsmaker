@@ -1,5 +1,6 @@
 """Single heavy-job queue; durable states, cooperative and subprocess cancellation."""
 
+import copy
 import json
 import os
 import queue
@@ -194,7 +195,7 @@ class Jobs:
                 id=uid(),
                 project_id=project_id,
                 kind=kind,
-                args=args or {},
+                args=copy.deepcopy(args or {}),
                 status="queued",
                 message="순서를 기다리고 있습니다.",
                 progress=0,
@@ -238,6 +239,8 @@ class Jobs:
                 self.handlers[job["kind"]](ctx, job["project_id"], job["args"])
                 ctx.check()
                 label = {
+                    "prepare": "자동 준비",
+                    "publish_plan": "인코딩·발행 예약",
                     "analyze": "내용 분석·분할",
                     "hooks": "후킹 후보 생성",
                     "framing": "그림·글 조정 제안",

@@ -114,6 +114,30 @@ class Connections:
             )
         return result
 
+    def scheduled_posts(self, channels):
+        """Read every page; do not hide conflicts by returning a truncated queue."""
+        result = []
+        for org in sorted({c["organization_id"] for c in channels}):
+            ids = [c["id"] for c in channels if c["organization_id"] == org]
+            after = None
+            for _ in range(100):
+                data = self.gql(
+                    "query($input:PostsInput!,$after:String){posts(input:$input,first:100,after:$after){edges{node{id channelId text status dueAt}} pageInfo{hasNextPage endCursor}}}",
+                    {"input": {"organizationId": org, "filter": {
+                        "channelIds": ids, "status": ["scheduled", "sending", "needs_approval", "error"]}},
+                     "after": after},
+                )["posts"]
+                result.extend(e["node"] for e in data["edges"] or [])
+                if not data["pageInfo"]["hasNextPage"]:
+                    break
+                cursor = data["pageInfo"]["endCursor"]
+                if not cursor or cursor == after:
+                    raise BufferError("Buffer 예약 목록을 끝까지 확인하지 못했습니다.")
+                after = cursor
+            else:
+                raise BufferError("Buffer 예약 목록이 너무 많습니다. 확인 범위를 줄여 주세요.")
+        return result
+
     def post(self, post_id):
         return self.gql(
             "query($input:PostInput!){post(input:$input){id status dueAt sentAt text channelId externalLink}}",
@@ -275,7 +299,8 @@ class Publisher:
 
     def schedule(self, ctx, pid, args):
         p = self.store.load(pid)
-        due = timestamp(args["due_at"])
+        explicit = args.get("schedule")
+        due = timestamp(explicit[0]["due_at"] if explicit else args["due_at"])
         if due < datetime.now(timezone.utc) + timedelta(minutes=10):
             raise ValueError("예약은 현재 시각보다 최소 10분 뒤로 지정해 주세요.")
         channel_ids = args.get("channel_ids", [])
@@ -297,6 +322,15 @@ class Publisher:
         privacy = args.get("youtube_privacy", "public")
         if privacy not in ("public", "private", "unlisted"):
             raise ValueError("YouTube 공개 범위를 확인해 주세요.")
+        if explicit is not None:
+            dates = {row["clip_id"]: timestamp(row["due_at"]).isoformat() for row in explicit}
+            if len(dates) != len(explicit) or set(dates) != {c["id"] for c in clips}:
+                raise ValueError("예약 달력과 선택 영상이 일치하지 않습니다.")
+        else:
+            dates = {c["id"]: (due + timedelta(minutes=spacing * i)).isoformat()
+                     for i, c in enumerate(clips)}
+        if any(timestamp(t) < datetime.now(timezone.utc) + timedelta(minutes=10) for t in dates.values()):
+            raise ValueError("예약 시각이 지났거나 너무 임박했습니다. 달력을 다시 확인해 주세요.")
         records = self.records()
         for i, clip in enumerate(clips):
             ctx.check()
@@ -311,7 +345,7 @@ class Publisher:
                 raise ValueError(
                     "현재 편집 내용으로 인코딩을 완료한 쇼츠만 예약할 수 있습니다."
                 )
-            scheduled = (due + timedelta(minutes=spacing * i)).isoformat()
+            scheduled = dates[clip["id"]]
             if any(
                 r["project_id"] == pid
                 and r["clip_id"] == clip["id"]

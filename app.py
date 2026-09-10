@@ -14,6 +14,7 @@ from shortsmaker.store import Store, Conflict
 from shortsmaker.jobs import Jobs
 from shortsmaker.service import Service
 from shortsmaker.publishing import Connections, Publisher
+from shortsmaker.workflow import Workflow
 
 ROOT = Path(__file__).resolve().parent
 
@@ -25,7 +26,8 @@ def create_app(data_dir=None):
     jobs = Jobs(store.root)
     service = Service(store, jobs)
     publisher = Publisher(store, jobs, Connections(ROOT / ".env.local"))
-    app.extensions.update(store=store, jobs=jobs, service=service, publisher=publisher)
+    workflow = Workflow(store, jobs, service, publisher)
+    app.extensions.update(store=store, jobs=jobs, service=service, publisher=publisher, workflow=workflow)
 
     @app.before_request
     def local_only():
@@ -70,6 +72,14 @@ def create_app(data_dir=None):
             request.json["post_id"],
         )
         return jsonify(ok=True)
+
+    @app.post("/api/projects/<pid>/calendar")
+    def calendar(pid):
+        return jsonify(workflow.make_plan(pid, request.json or {}))
+
+    @app.post("/api/projects/<pid>/calendar/<plan_id>/confirm")
+    def confirm_calendar(pid, plan_id):
+        return jsonify(workflow.confirm(pid, plan_id))
 
     @app.get("/api/channels")
     def channels():

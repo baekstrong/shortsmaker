@@ -25,6 +25,8 @@ let state = { projects: [], jobs: [], models: [] },
   shownRevision = -1,
   videoProject = null,
   shownBusy = null;
+let calendarPlan = null, calendarMonth = "", calendarRequest = 0;
+let calendarProject = null;
 let channels = [],
   records = [],
   audio = null,
@@ -111,6 +113,12 @@ async function refresh() {
     state = next;
     if (!project()) pid = state.projects[0]?.id;
     for (const j of state.jobs) {
+      for (const event of j.stage_events || []) {
+        if (!seen.has(event.id)) {
+          if (refresh.ready) beep();
+          seen.add(event.id);
+        }
+      }
       if (
         ["succeeded", "failed", "cancelled", "interrupted"].includes(
           j.status,
@@ -118,7 +126,7 @@ async function refresh() {
         !seen.has(j.id)
       ) {
         if (refresh.ready) {
-          beep();
+          if (!j.stage_events?.length || j.status !== "succeeded") beep();
           if (j.status === "failed") toast(j.message);
         }
         seen.add(j.id);
@@ -175,7 +183,7 @@ function render() {
     )
     .join("");
   for (const b of document.querySelectorAll(
-    "[data-stage],#schedule-open,#add-clip,#undo,[data-align]",
+    "[data-stage],#prepare-auto,#schedule-open,#add-clip,#undo,[data-align]",
   ))
     b.disabled = busy();
   if ((shownRevision !== p.revision || shownBusy !== busy()) && !mutating) {
@@ -353,6 +361,10 @@ $("job-status").onclick = safe(async (e) => {
   if (c) await api(`/api/jobs/${c.dataset.cancel}/cancel`, {});
   if (r) await api(`/api/jobs/${r.dataset.retry}/retry`, {});
   await refresh();
+});
+$("prepare-auto").onclick = safe(async () => {
+  if (project().clips.length && !confirm("자동 준비를 새로 시작하면 현재 구간을 AI가 다시 나눕니다. 기존 편집은 되돌리기로 복구할 수 있습니다. 계속할까요?")) return;
+  await run("prepare");
 });
 for (const button of document.querySelectorAll("[data-stage]"))
   button.onclick = safe(async () => {
@@ -580,46 +592,111 @@ async function loadReservations() {
       )
       .join("") || '<p class="muted">아직 예약한 영상이 없습니다.</p>';
 }
+function savedSchedulePreferences() {
+  try { return JSON.parse(localStorage.getItem("schedulePreferences") || "{}"); }
+  catch { return {}; }
+}
+function monthShift(amount) {
+  const [y, m] = calendarMonth.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + amount, 1));
+  calendarMonth = d.toISOString().slice(0, 7);
+  renderCalendar();
+}
+function renderCalendar() {
+  if (!calendarPlan) return;
+  const [year, month] = calendarMonth.split("-").map(Number);
+  $("calendar-month").textContent = `${year}년 ${month}월`;
+  const padding = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const count = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  let html = '<div class="calendar-blank"></div>'.repeat(padding);
+  for (let d = 1; d <= count; d++) {
+    const date = `${calendarMonth}-${String(d).padStart(2, "0")}`;
+    const item = calendarPlan.items.find(i => i.date === date);
+    const existing = calendarPlan.existing.filter(i => i.date === date);
+    const names = [...new Set(existing.map(i => i.title))];
+    html += `<div class="calendar-day ${item ? "planned" : existing.length ? "occupied" : ""}"><strong>${d}</strong>${item ? `<time>낮 12:00</time><span>SHORT ${String(item.number).padStart(2,"0")}</span><p>${esc(item.title)}</p>` : names.length ? `<small>기존 예약</small>${names.map(n => `<p>${esc(n)}</p>`).join("")}` : ""}</div>`;
+  }
+  $("calendar-grid").innerHTML = html;
+  $("calendar-agenda").innerHTML = calendarPlan.items.map(i =>
+    `<div class="calendar-agenda-row"><time>${i.date} · 낮 12시</time><span>${esc(i.title)}</span></div>`).join("");
+  $("schedule-summary").textContent = `${calendarPlan.items.length}개 쇼츠 · ${calendarPlan.items[0].date} ~ ${calendarPlan.items.at(-1).date} · ${calendarPlan.channels.map(c => c.displayName || c.name).join(" / ")}`;
+}
+async function buildCalendar(initial = false) {
+  const requestId = ++calendarRequest;
+  calendarPlan = null;
+  $("schedule-submit").disabled = true;
+  $("calendar-message").textContent = "Buffer의 기존 예약을 확인하고 달력을 배치하고 있습니다…";
+  $("calendar-grid").innerHTML = $("calendar-agenda").innerHTML = "";
+  const preferences = savedSchedulePreferences();
+  const selected = initial ? undefined : [...document.querySelectorAll("[data-channel]:checked")].map(c => c.dataset.channel);
+  try {
+    await editQueue;
+    const plan = await api(`/api/projects/${calendarProject}/calendar`, {
+      start_date: $("calendar-start").value || undefined,
+      channel_ids: selected,
+      youtube_privacy: $("privacy").value,
+    });
+    if (requestId !== calendarRequest || !$("schedule-dialog").open) return;
+    // Reuse saved channel choices only when all of them are still connected.
+    if (initial && preferences.channel_ids?.length && preferences.channel_ids.every(id => plan.channels.some(c => c.id === id)) && preferences.channel_ids.length !== plan.channels.length) {
+      $("channels").innerHTML = plan.channels.map(c => `<label class="check"><input type="checkbox" data-channel="${esc(c.id)}" ${preferences.channel_ids.includes(c.id) ? "checked" : ""}>${esc(c.displayName || c.name)} · ${esc(c.service)}</label>`).join("");
+      return buildCalendar(false);
+    }
+    calendarPlan = plan;
+    channels = initial ? plan.channels : channels;
+    if (initial) $("channels").innerHTML = channels.map(c => `<label class="check"><input type="checkbox" data-channel="${esc(c.id)}" checked>${esc(c.displayName || c.name)} · ${esc(c.service)}</label>`).join("");
+    $("calendar-start").value = plan.start_date;
+    calendarMonth = plan.items[0].date.slice(0, 7);
+    $("calendar-message").textContent = "날짜와 문구를 확인해 주세요. 아직 인코딩·예약을 시작하지 않았습니다.";
+    renderCalendar();
+    $("schedule-submit").disabled = false;
+  } catch (e) {
+    if (requestId === calendarRequest) $("calendar-message").textContent = e.message;
+  }
+}
 $("schedule-open").onclick = safe(async () => {
-  const selected = project().clips.filter((c) => c.included);
-  if (
-    !selected.length ||
-    selected.some((c) => !c.confirmed || !c.render_current)
-  )
-    throw Error(
-      "포함된 쇼츠의 문구 확정과 현재 편집본 인코딩을 먼저 완료해 주세요.",
-    );
+  await editQueue;
+  if (!project().clips.some(c => c.included)) throw Error("예약할 쇼츠를 체크해 주세요.");
+  calendarProject = pid;
+  $("calendar-start").value = "";
+  $("privacy").value = savedSchedulePreferences().youtube_privacy || "public";
+  $("channels").innerHTML = "";
+  $("schedule-summary").textContent = "";
   $("schedule-dialog").showModal();
-  const data = await api("/api/channels");
-  channels = data.channels;
-  $("channels").innerHTML = channels
-    .map(
-      (c) =>
-        `<label class="check"><input type="checkbox" data-channel="${c.id}" checked>${esc(c.displayName || c.name)} · ${esc(c.service)}</label>`,
-    )
-    .join("");
-  const t = new Date(Date.now() + 24 * 3600000);
-  t.setMinutes(t.getMinutes() - t.getTimezoneOffset());
-  $("due-at").value = t.toISOString().slice(0, 16);
-  $("schedule-summary").textContent =
-    `쇼츠 ${project().clips.filter((c) => c.included).length}개를 예약합니다.`;
+  await buildCalendar(true);
 });
+$("calendar-refresh").onclick = safe(() => buildCalendar(!$("channels").querySelector("input")));
+$("calendar-start").oninput = safe(() => {
+  if (!$("calendar-start").value || !$("calendar-start").validity.valid) {
+    calendarRequest++;
+    calendarPlan = null;
+    $("schedule-submit").disabled = true;
+    $("calendar-message").textContent = "시작일을 입력해 주세요.";
+    $("calendar-grid").innerHTML = $("calendar-agenda").innerHTML = "";
+    return;
+  }
+  return buildCalendar(!$("channels").querySelector("input"));
+});
+$("channels").onchange = safe(() => buildCalendar());
+$("privacy").onchange = safe(() => buildCalendar(!$("channels").querySelector("input")));
+$("calendar-prev").onclick = () => calendarPlan && monthShift(-1);
+$("calendar-next").onclick = () => calendarPlan && monthShift(1);
+$("schedule-dialog").addEventListener("close", () => { calendarRequest++; calendarPlan = null; });
 $("schedule-submit").onclick = safe(async () => {
-  const due = new Date($("due-at").value);
-  if (!Number.isFinite(due.getTime()))
-    throw Error("예약 시간을 입력해 주세요.");
-  await run("schedule", {
-    clip_ids: project()
-      .clips.filter((c) => c.included)
-      .map((c) => c.id),
-    channel_ids: [...document.querySelectorAll("[data-channel]:checked")].map(
-      (x) => x.dataset.channel,
-    ),
-    due_at: due.toISOString(),
-    spacing_minutes: Number($("spacing").value),
-    youtube_privacy: $("privacy").value,
-  });
-  $("schedule-dialog").close();
+  if (!calendarPlan) return;
+  const plan = calendarPlan;
+  $("schedule-submit").disabled = true;
+  try {
+    await editQueue;
+    await api(`/api/projects/${calendarProject}/calendar/${plan.id}/confirm`, {});
+    localStorage.setItem("schedulePreferences", JSON.stringify({ channel_ids: plan.channel_ids, youtube_privacy: plan.youtube_privacy }));
+    $("schedule-dialog").close();
+    await refresh();
+    toast("달력을 확정했습니다. 인코딩 후 해당 날짜로 자동 예약합니다.");
+  } catch (e) {
+    $("calendar-message").textContent = e.message;
+    $("schedule-submit").disabled = false;
+  }
 });
 $("refresh-reservations").onclick = safe(() => run("refresh"));
 $("reservations").onclick = safe(async (e) => {
