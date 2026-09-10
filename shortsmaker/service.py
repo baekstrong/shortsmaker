@@ -5,9 +5,25 @@ import json
 import math
 import sys
 import shutil
+import tempfile
 from pathlib import Path
 from . import ai, media
 from .store import uid
+
+
+def export_folder(project):
+    value = project.get("export_dir")
+    if not value:
+        raise ValueError("인코딩 전에 저장 폴더를 설정해 주세요.")
+    folder = Path(value).expanduser()
+    if not folder.is_absolute() or not folder.is_dir():
+        raise ValueError("저장 폴더를 찾을 수 없습니다. 이 Mac에서 저장 위치를 다시 설정해 주세요.")
+    try:
+        with tempfile.TemporaryFile(dir=folder):
+            pass
+    except OSError as exc:
+        raise ValueError("저장 폴더에 쓸 수 없습니다. 다른 위치를 설정해 주세요.") from exc
+    return folder.resolve()
 
 
 def new_clip(start, end, title="", reason=""):
@@ -212,12 +228,12 @@ class Service:
 
     def encode(self, ctx, pid, args):
         p = self.store.load(pid)
+        export_dir = export_folder(p)
         self.source(p)
         for clip in self.selected(p, args):
             render = media.export_clip(ctx, p, clip, self.store.folder(pid))
-            export_dir = self.store.folder(pid) / "완성 영상"
-            export_dir.mkdir(parents=True, exist_ok=True)
-            filename = f"{p['clips'].index(clip)+1:02d} {Path(render['path']).stem} {render['key'][:6]}.mp4"
+
+            filename = f"{p['clips'].index(clip)+1:02d} {Path(render['path']).stem} {render['key'][:6]} {clip['id'][:8]}.mp4"
             destination = export_dir / filename
             if not destination.exists():
                 temporary = export_dir / (uid() + ".tmp")

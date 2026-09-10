@@ -138,6 +138,9 @@ def create_app(data_dir=None):
     @app.post("/api/projects/<pid>/jobs/<kind>")
     def submit(pid, kind):
         store.load(pid)
+        if kind == "encode":
+            from shortsmaker.service import export_folder
+            export_folder(store.load(pid))
         return jsonify(jobs.submit(pid, kind, request.json or {}))
 
     @app.post("/api/jobs/<jid>/<action>")
@@ -191,10 +194,26 @@ def create_app(data_dir=None):
             as_attachment=request.args.get("download") == "1",
         )
 
+    @app.post("/api/projects/<pid>/export-folder")
+    def choose_export_folder(pid):
+        from shortsmaker.service import export_folder
+        store.load(pid)
+        result = subprocess.run(["osascript", "-e", 'POSIX path of (choose folder with prompt "완성 영상을 저장할 폴더를 선택하세요" )'], capture_output=True, text=True, timeout=180)
+        if result.returncode:
+            if "-128" in result.stderr:
+                return jsonify(cancelled=True)
+            raise ValueError("저장 폴더를 선택하지 못했습니다. 다시 시도해 주세요.")
+        folder = export_folder({"export_dir": result.stdout.strip()})
+        with jobs.lock:
+            if jobs.busy(pid):
+                raise ValueError("진행 중인 작업이 끝난 뒤 저장 위치를 변경해 주세요.")
+            p = store.change(pid, lambda p: p.update(export_dir=str(folder)))
+        return jsonify(present(p))
+
     @app.post("/api/projects/<pid>/reveal")
     def reveal(pid):
-        folder = store.folder(pid) / "완성 영상"
-        folder.mkdir(parents=True, exist_ok=True)
+        from shortsmaker.service import export_folder
+        folder = export_folder(store.load(pid))
         subprocess.run(["open", str(folder)], check=True)
         return jsonify(ok=True)
 

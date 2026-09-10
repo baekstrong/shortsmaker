@@ -71,7 +71,7 @@ def setup(tmp_path):
     p=store.create('/tmp/source.mp4',dict(width=1920,height=1080,duration=100,size=1,mtime_ns=1))
     clips=[new_clip(i*10,(i+1)*10) for i in range(3)]
     for i,c in enumerate(clips): c.update(hook=f'쇼츠 {i+1}',yellow='')
-    p=store.change(p['id'],lambda p:p.update(clips=clips))
+    p=store.change(p['id'],lambda p:p.update(clips=clips,export_dir=str(tmp_path)))
     return w,p,conn,service
 
 
@@ -178,3 +178,12 @@ def test_expired_approved_dates_never_shift_automatically(tmp_path):
         w.publish(Context(w.jobs,j),p['id'],j['args'])
     assert not service.calls and not conn.created
     assert w.load(plan['id'])['items'][0]['due_at']=='2000-01-01T12:00:00+09:00'
+
+
+def test_calendar_cannot_approve_without_export_folder(tmp_path):
+    w,p,conn,service=setup(tmp_path)
+    plan=w.make_plan(p['id'],{})
+    w.store.change(p['id'],lambda p:p.pop('export_dir'))
+    with pytest.raises(ValueError,match='저장 폴더'):w.confirm(p['id'],plan['id'])
+    assert not any(c['confirmed'] for c in w.store.load(p['id'])['clips'])
+    assert not w.load(plan['id']).get('job_id')

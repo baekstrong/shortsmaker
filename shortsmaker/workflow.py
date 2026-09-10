@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import json
 
 from .media import render_key
-from .service import validate_clip
+from .service import validate_clip, export_folder
 from .store import atomic_json, now, uid
 from .publishing import timestamp
 
@@ -160,6 +160,7 @@ class Workflow:
 
     def check_content(self, plan):
         p = self.store.load(plan["project_id"])
+        export_folder(p)
         clips = self.selected(p)
         if {c["id"]: render_key(p, c) for c in clips} != plan["keys"]:
             raise ValueError("달력을 만든 뒤 영상 편집이나 선택이 바뀌었습니다. 달력을 다시 확인해 주세요.")
