@@ -103,3 +103,12 @@
 - Python 기본 User-Agent는 공개 요청403/Cloudflare1010을 받았으나 앱 식별 User-Agent shortsmaker-connectivity-check/1.0으로200 성공. 클라이언트 요청 식별에 따른 차이로 기록하며 Buffer 서버 접근은 별도 검증 필요.
 - 앞서 승인된 테스트 영상 `5개 제대로가 10개 엉망보다 빠릅니다.mp4`가 기존 경로에 없고 Desktop 파일 검색에서도 발견되지 않아 영상 업로드·Buffer 예약은 수행하지 않았다.
 - 남은 행동: 사용자에게 테스트 영상 현재 위치 확인 후 R2 영상→Buffer 예약→즉시삭제 검증. 실제 발행하지 않는 조건 유지.
+
+## 2026-09-10 R2→Buffer 영상 예약 통합검증 성공
+- 사용자 지정 영상: 운동 밀당/쇼츠/매번 무게 올리면  오히려 안 늡니다.mp4, 32,043,405바이트. 원본 보존.
+- R2 고유 테스트 객체 업로드 → r2.dev 공개 HTTPS HEAD200/크기 확인 → Instagram 및 YouTube 예약 생성·별도 조회 scheduled 확인.
+- 예약 시각2026-09-17 13:53:21 KST(7일후), 확인 즉시 두 예약 삭제·재조회 NOT_FOUND. 실제 발행 없음.
+- Instagram 삭제ID6aa237c4cc365b11e1fbae26, YouTube 삭제ID6aa237c80b049baf391f44a0. YouTube 비공개·구독자알림끔 테스트 설정.
+- 예약 삭제 후 R2 테스트 영상 삭제, S3 HEAD404 및 공개 HTTPS HEAD404 확인. 첫 공개 확인 시 기본User-Agent403으로 중단된 시도의 객체도 삭제404 확인 후 앱 식별User-Agent로 재시도해 성공.
+- 검증 완료 범위: R2 영상 업로드·공개 접근·Buffer 예약 생성/조회/삭제·R2 정리. 실제 플랫폼 발행은 사용자 요청에 따라 제외. r2.dev는 개발용, 운영 도메인 별도 검토.
+- 다음: Codex 구독 Astra medium 앱 호출 검증 후 로컬 앱 개발. 출처:2026-09-10 S3 및 Buffer GraphQL 실응답.
