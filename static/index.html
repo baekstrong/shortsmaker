@@ -34,20 +34,6 @@
                 aria-label="영상 탐색"
               /><span id="time">00:00</span>
             </div>
-            <div id="information-markers" class="information-markers" aria-label="설명 화면 구간"></div>
-            <div id="frame-info" class="muted"></div>
-            <div id="frame-scope" class="frame-scope"></div>
-            <button id="whole-frame" class="quiet" hidden>쇼츠 전체 위치 편집으로</button>
-            <p class="muted">설명 구간을 선택하면 그 구간만 위치를 조정합니다.</p>
-            <div class="row frame-align" aria-label="영상 정렬">
-              <button data-align="0">왼쪽 정렬</button>
-              <button data-align="0.5">가운데 정렬</button>
-              <button data-align="1">오른쪽 정렬</button>
-            </div>
-            <div class="row">
-              <button id="download">완성 영상 보기</button
-              ><button id="reveal" class="quiet">폴더 열기 ↗</button>
-            </div>
           </section>
       <div class="section-label">내 프로젝트</div>
       <nav id="projects"></nav>
@@ -177,6 +163,20 @@
                 <h3>화면 구도</h3>
                 <button id="auto-frame" class="quiet">설명 화면 찾기</button>
               </div>
+            <div id="information-markers" class="information-markers" aria-label="설명 화면 구간"></div>
+            <div id="frame-info" class="muted"></div>
+            <div id="frame-scope" class="frame-scope"></div>
+            <button id="whole-frame" class="quiet" hidden>쇼츠 전체 위치 편집으로</button>
+            <p class="muted">설명 구간을 선택하면 그 구간만 위치를 조정합니다.</p>
+            <div class="row frame-align" aria-label="영상 정렬">
+              <button data-align="0">왼쪽 정렬</button>
+              <button data-align="0.5">가운데 정렬</button>
+              <button data-align="1">오른쪽 정렬</button>
+            </div>
+            <div class="row">
+              <button id="download">완성 영상 보기</button
+              ><button id="reveal" class="quiet">폴더 열기 ↗</button>
+            </div>
               <button id="reset-frame" class="quiet">150% · 중앙 기본값으로</button>
               <label
                 >확대율 <output id="zoom-label">150%</output

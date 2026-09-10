@@ -723,3 +723,6 @@ main { margin-left:clamp(340px, 30vw, 480px); padding-left:20px; padding-right:2
 @media (max-width:750px) {
   .work-grid > section { height:65dvh; min-height:360px; }
 }
+
+#editor #information-markers { margin-top:12px; }
+#editor .frame-align + .row { margin-bottom:14px; }

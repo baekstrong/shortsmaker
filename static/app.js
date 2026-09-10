@@ -265,6 +265,7 @@ function renderEditor() {
   for (const el of document.querySelectorAll("#editor button,#editor input,#editor textarea,#hooks-pane button,#hooks-pane input,#hooks-pane textarea"))
     if (busy()) el.disabled = true;
     else el.disabled = false;
+  $("download").disabled = busy() || !c.render_current;
 }
 function informationRegions() {
   const c = clip();
