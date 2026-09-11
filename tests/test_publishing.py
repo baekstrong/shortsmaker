@@ -6,7 +6,7 @@ from shortsmaker.store import Store
 from shortsmaker.jobs import Jobs
 from shortsmaker.service import new_clip
 from shortsmaker.media import render_key
-from shortsmaker.publishing import Publisher, BufferError, cleanup_due
+from shortsmaker.publishing import Publisher, Connections, BufferError, cleanup_due
 
 
 class Context:
@@ -27,7 +27,7 @@ class FakeConnections:
     def channels(self):
         return [
             dict(id=x, name=x, displayName=x, service=x, isQueuePaused=False)
-            for x in ("instagram", "youtube")
+            for x in ("instagram", "youtube", "tiktok")
         ]
 
     def upload(self, path, key, ctx):
@@ -151,3 +151,45 @@ def test_cancel_after_previous_delete_response_lost(tmp_path):
         Context(), p["id"], {"record_id": publisher.records()[0]["id"]}
     )
     assert len(conn.deleted) == 1
+
+
+def test_add_tiktok_to_existing_reservation_is_idempotent(tmp_path):
+    p, publisher, conn, args = setup(tmp_path)
+    publisher.schedule(Context(), p["id"], args)
+    before = publisher.records()[0]["deliveries"]
+    args["channel_ids"] = ["tiktok"]
+    publisher.schedule(Context(), p["id"], args)
+    publisher.schedule(Context(), p["id"], args)
+    assert conn.created == ["instagram", "youtube", "tiktok"]
+    record = publisher.records()[0]
+    assert record["deliveries"][:2] == before
+    assert record["deliveries"][2]["status"] == "scheduled"
+    assert len(publisher.records()) == 1
+
+
+def test_connections_include_tiktok_and_use_video_metadata():
+    conn = object.__new__(Connections)
+    requests = []
+
+    def gql(query, variables=None):
+        requests.append((query, variables))
+        if "organizations" in query:
+            return {"account": {"organizations": [{"id": "org"}]}}
+        if "channels(input" in query:
+            return {"channels": [{"id": s, "service": s} for s in
+                                 ("instagram", "youtube", "tiktok", "facebook")]}
+        return {"createPost": {"__typename": "PostActionSuccess",
+                               "post": {"id": "post", "status": "scheduled"}}}
+
+    conn.gql = gql
+    channels = conn.channels()
+    assert [c["service"] for c in channels] == ["instagram", "youtube", "tiktok"]
+    assert all(c["organization_id"] == "org" for c in channels)
+    conn.create(channels[2], "영상 제목", "2027-01-01T00:00:00Z", "https://media.example/video.mp4")
+    payload = requests[-1][1]["input"]
+    assert payload["metadata"] == {"tiktok": {"isAiGenerated": False}}
+    assert payload["assets"] == [{"video": {"url": "https://media.example/video.mp4"}}]
+    assert payload["channelId"] == "tiktok"
+    assert payload["schedulingType"] == "automatic"
+    with pytest.raises(ValueError, match="지원하지 않는"):
+        conn.create({"service": "facebook"}, "title", "date", "url")

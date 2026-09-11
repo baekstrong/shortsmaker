@@ -110,7 +110,7 @@ class Connections:
             result.extend(
                 dict(c, organization_id=org["id"])
                 for c in data["channels"]
-                if c["service"] in ("instagram", "youtube")
+                if c["service"] in ("instagram", "youtube", "tiktok")
             )
         return result
 
@@ -145,19 +145,22 @@ class Connections:
         )["post"]
 
     def create(self, channel, text, due_at, url, privacy="public"):
-        metadata = (
-            {"instagram": {"type": "reel", "shouldShareToFeed": True}}
-            if channel["service"] == "instagram"
-            else {
-                "youtube": {
-                    "title": text.replace("\n", " ")[:100],
-                    "categoryId": "17",
-                    "privacy": privacy,
-                    "notifySubscribers": False,
-                    "madeForKids": False,
-                }
-            }
-        )
+        service = channel["service"]
+        if service == "instagram":
+            metadata = {"instagram": {"type": "reel", "shouldShareToFeed": True}}
+        elif service == "youtube":
+            metadata = {"youtube": {
+                "title": text.replace("\n", " ")[:100],
+                "categoryId": "17",
+                "privacy": privacy,
+                "notifySubscribers": False,
+                "madeForKids": False,
+            }}
+        elif service == "tiktok":
+            # Source footage is real; AI-assisted copy/cropping is not synthetic video.
+            metadata = {"tiktok": {"isAiGenerated": False}}
+        else:
+            raise ValueError("지원하지 않는 발행 채널입니다.")
         data = self.gql(
             "mutation($input:CreatePostInput!){createPost(input:$input){__typename ... on PostActionSuccess{post{id status dueAt sentAt}} ... on MutationError{message}}}",
             {
@@ -306,7 +309,7 @@ class Publisher:
         channel_ids = args.get("channel_ids", [])
         channels = [c for c in self.connections.channels() if c["id"] in channel_ids]
         if not channels or len(channels) != len(set(channel_ids)):
-            raise ValueError("인스타그램·유튜브 채널을 선택해 주세요.")
+            raise ValueError("인스타그램·유튜브·틱톡 채널을 선택해 주세요.")
         if any(c["isQueuePaused"] for c in channels):
             raise ValueError("선택한 Buffer 채널의 대기열이 일시정지 상태입니다.")
         clips = [

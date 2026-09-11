@@ -908,13 +908,13 @@ async function buildCalendar(initial = false) {
       youtube_privacy: $("privacy").value,
     });
     if (requestId !== calendarRequest || !$("schedule-dialog").open) return;
+    if (initial) channels = plan.channels;
     // Reuse saved channel choices only when all of them are still connected.
     if (initial && preferences.channel_ids?.length && preferences.channel_ids.every(id => plan.channels.some(c => c.id === id)) && preferences.channel_ids.length !== plan.channels.length) {
       $("channels").innerHTML = plan.channels.map(c => `<label class="check"><input type="checkbox" data-channel="${esc(c.id)}" ${preferences.channel_ids.includes(c.id) ? "checked" : ""}>${esc(c.displayName || c.name)} · ${esc(c.service)}</label>`).join("");
       return buildCalendar(false);
     }
     calendarPlan = plan;
-    channels = initial ? plan.channels : channels;
     if (initial) $("channels").innerHTML = channels.map(c => `<label class="check"><input type="checkbox" data-channel="${esc(c.id)}" checked>${esc(c.displayName || c.name)} · ${esc(c.service)}</label>`).join("");
     $("calendar-start").value = plan.start_date;
     calendarMonth = plan.items[0].date.slice(0, 7);

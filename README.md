@@ -1,6 +1,6 @@
 # Shortsmaker
 
-편집한 가로 롱폼을 주제별 쇼츠로 만들고 Instagram·YouTube에 예약하는 Mac 로컬 앱.
+편집한 가로 롱폼을 주제별 쇼츠로 만들고 Instagram·YouTube·TikTok에 예약하는 Mac 로컬 앱.
 
 ## 실행
 
