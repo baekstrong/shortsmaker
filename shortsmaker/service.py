@@ -98,20 +98,50 @@ def validate_clip(clip, duration):
 class Service:
     def __init__(self, store, jobs):
         self.store, self.jobs = store, jobs
+        self._source_checks = set()
         for kind in ("analyze", "hooks", "framing", "encode"):
             jobs.handlers[kind] = getattr(self, kind)
 
     def source(self, p):
         path = media.existing_path(p["source"])
         s = path.stat()
+        signature = (str(path), s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+                     json.dumps(p["metadata"], sort_keys=True))
+        if signature in self._source_checks:
+            p["source"] = str(path)
+            return path
         if (
             s.st_size != p["metadata"]["size"]
             or s.st_mtime_ns != p["metadata"]["mtime_ns"]
         ):
-            raise ValueError(
-                "불러온 뒤 원본 파일이 변경되었습니다. 새 프로젝트로 다시 불러와 주세요."
-            )
+            # Older imports stored whole seconds; file copies restore nanoseconds.
+            old = p["metadata"]["mtime_ns"]
+            precision_only = (s.st_size == p["metadata"]["size"] and
+                              old % 1_000_000_000 == 0 and
+                              old // 1_000_000_000 == s.st_mtime_ns // 1_000_000_000)
+            if not precision_only or not self.same_media(p["metadata"], media.probe(path)):
+                raise ValueError("원본의 위치 또는 파일 정보가 달라졌습니다. 미리보기 아래 ‘원본 다시 연결’로 같은 영상을 선택해 주세요.")
+        self._source_checks.add(signature)
+        p["source"] = str(path)
         return path
+
+    @staticmethod
+    def same_media(old, new):
+        return (all(old.get(k) == new.get(k) for k in
+                    ("size", "width", "height", "fps", "has_audio", "hdr"))
+                and abs(old["duration"] - new["duration"]) < 0.01)
+
+    def reconnect(self, pid, value):
+        path = media.existing_path(value)
+        metadata = media.probe(path)
+        with self.jobs.lock:
+            if self.jobs.busy(pid):
+                raise ValueError("진행 중인 작업이 끝난 뒤 원본을 연결해 주세요.")
+            def update(p):
+                if not self.same_media(p["metadata"], metadata):
+                    raise ValueError("기존 원본과 크기·길이·영상 정보가 다릅니다. 같은 원본 영상을 선택해 주세요.")
+                p.update(source=str(path), metadata=metadata)
+            return self.store.change(pid, update)
 
     def selected(self, p, args):
         ids = args.get("clip_ids")

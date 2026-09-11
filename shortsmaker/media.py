@@ -6,17 +6,23 @@ import math
 import re
 import subprocess
 import unicodedata
+import os
+import tempfile
+from functools import lru_cache
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 WIDTH, HEIGHT = 1080, 1920
 FONT_CANDIDATES = [
     Path.home() / "Library/Fonts/GmarketSansBold.otf",
+    Path("/Library/Fonts/GmarketSansBold.otf"),
     Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),
+    Path("/System/Library/Fonts/Supplemental/AppleGothic.ttf"),
 ]
 
 
 def existing_path(value):
+    value = str(value)
     for spelling in (
         value,
         unicodedata.normalize("NFD", value),
@@ -102,15 +108,58 @@ def geometry(metadata, zoom=1.5, center=0.5, end_center=None, vertical=0.5):
     )
 
 
+def title_font(size):
+    for path in FONT_CANDIDATES:
+        try:
+            return ImageFont.truetype(str(path), size)
+        except OSError:
+            continue
+    raise ValueError("한글 폰트를 읽을 수 없습니다. 이 Mac에 GmarketSansBold를 설치해 주세요.")
+
+
+@lru_cache(maxsize=16)
+def _font_digest(path, size, mtime_ns):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()[:20]
+
+
+def font_key():
+    try:
+        path = Path(title_font(40).path)
+        stat = path.stat()
+        return _font_digest(str(path), stat.st_size, stat.st_mtime_ns)
+    except (OSError, ValueError):
+        return "unavailable"
+
+
+def information_image(source, at, path):
+    import cv2
+    cap = cv2.VideoCapture(str(source))
+    try:
+        cap.set(cv2.CAP_PROP_POS_MSEC, float(at) * 1000)
+        ok, frame = cap.read()
+        if not ok:
+            raise ValueError("설명 화면을 읽지 못했습니다. 원본 다운로드 상태를 확인해 주세요.")
+        image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        image.thumbnail((960, 540))
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(suffix=".jpg", dir=path.parent)
+        try:
+            with os.fdopen(fd, "wb") as output:
+                image.save(output, format="JPEG", quality=88)
+            os.replace(temporary, path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+    finally:
+        cap.release()
+
+
 def title_image(text, yellow, path, font_size=80):
     text = str(text).strip()
     if not text or len(text) > 100:
         raise ValueError("후킹 문구는 1~100자로 입력해 주세요.")
     if yellow and yellow not in text:
         raise ValueError("노란 강조 구절은 후킹 문구에 포함되어야 합니다.")
-    font_path = next((p for p in FONT_CANDIDATES if p.exists()), None)
-    if not font_path:
-        raise ValueError("한글 폰트가 없습니다. GmarketSansBold를 설치해 주세요.")
     # Break at whitespace closest to a balanced two-line layout; explicit newline respected.
     lines = text.splitlines()
     if len(lines) > 2:
@@ -121,7 +170,7 @@ def title_image(text, yellow, path, font_size=80):
         lines = [text[:at], text[at:].lstrip()]
     font_size = max(40, min(100, int(font_size)))
     while True:
-        font = ImageFont.truetype(str(font_path), font_size)
+        font = title_font(font_size)
         if max(font.getlength(line) for line in lines) <= 970 or font_size <= 24:
             break
         font_size -= 1
@@ -146,13 +195,21 @@ def title_image(text, yellow, path, font_size=80):
         cursor = start + len(line)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(path)
+    # Readers must never receive a partially written PNG during concurrent requests.
+    fd, temporary = tempfile.mkstemp(suffix=".png", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as output:
+            canvas.save(output, format="PNG")
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
     return dict(lines=lines, font_size=font_size)
 
 
 def render_key(project, clip):
     payload = {
         "version": 6,
+        "font": font_key(),
         "source": project["metadata"],
         "path": project["source"],
         "clip": {

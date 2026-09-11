@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent
 def create_app(data_dir=None):
     app = Flask(__name__, static_folder="static")
     app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     store = Store(data_dir or os.environ.get("SHORTSMAKER_DATA", ROOT / "data"))
     jobs = Jobs(store.root)
     service = Service(store, jobs)
@@ -135,6 +136,10 @@ def create_app(data_dir=None):
     def edit(pid):
         return jsonify(present(service.edit(pid, request.json)))
 
+    @app.post("/api/projects/<pid>/reconnect")
+    def reconnect(pid):
+        return jsonify(present(service.reconnect(pid, request.json["path"])))
+
     @app.post("/api/projects/<pid>/jobs/<kind>")
     def submit(pid, kind):
         store.load(pid)
@@ -162,7 +167,15 @@ def create_app(data_dir=None):
         p = store.load(pid)
         c = next(c for c in p["clips"] if c["id"] == cid)
         path = store.folder(pid) / "titles" / (media.render_key(p, c) + ".png")
-        if not path.exists():
+        valid = False
+        if path.exists():
+            try:
+                with media.Image.open(path) as cached:
+                    cached.verify()
+                valid = True
+            except (OSError, SyntaxError):
+                pass
+        if not valid:
             media.title_image(
                 c["hook"] or "후킹 문구를 선택하세요",
                 c.get("yellow", ""),
@@ -179,7 +192,10 @@ def create_app(data_dir=None):
         name = s.get("thumbnail", "")
         if not name or Path(name).name != name:
             raise ValueError("설명 화면 미리보기가 없습니다.")
-        return send_file(store.folder(pid) / "frames" / cid / name, conditional=True)
+        path = store.folder(pid) / "frames" / cid / name
+        if not path.is_file():
+            media.information_image(service.source(p), s["time"], path)
+        return send_file(path, conditional=True)
 
     @app.get("/api/projects/<pid>/clips/<cid>/output")
     def output(pid, cid):

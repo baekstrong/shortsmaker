@@ -59,7 +59,7 @@ async function api(path, body) {
           headers: { "Content-Type": "application/json", "X-Shortsmaker": "1" },
           body: JSON.stringify(body),
         },
-  );
+  ).catch(() => { throw Error("앱 서버에 연결할 수 없습니다. 시작.command를 실행하고 터미널을 열어 두세요. 입력한 문구는 화면에 유지됩니다."); });
   const data = await r.json();
   if (!r.ok) throw Error(data.error || "요청 실패");
   return data;
@@ -141,6 +141,7 @@ async function refresh() {
   }
 }
 function selectProject(id) {
+  flushTitleDraft();
   cancelDrag();
   selectedRegionId = null;
   pid = id;
@@ -213,7 +214,7 @@ function renderEditor() {
   $("editor-empty").hidden = !!c;
   $("preview-placeholder").hidden = !!c;
   $("download").disabled = !c || !c.render_current;
-  $("title-image").hidden = !c;
+  if (!c) { $("title-image").hidden = true; titleRequest++; titleURL = ""; }
   $("video").style.visibility = c ? "visible" : "hidden";
   if (!c) return;
   const v = $("video");
@@ -226,9 +227,10 @@ function renderEditor() {
   fieldValue("clip-title", c.title);
   fieldValue("start", c.start);
   fieldValue("end", c.end);
-  fieldValue("hook", c.hook);
-  fieldValue("yellow", c.yellow);
-  fieldValue("font-size", c.font_size);
+  const draft = titleDrafts.get(`${pid}/${cid}`);
+  fieldValue("hook", draft?.changes.hook ?? c.hook);
+  fieldValue("yellow", draft?.changes.yellow ?? c.yellow);
+  fieldValue("font-size", draft?.changes.font_size ?? c.font_size);
   $("confirm-hook").textContent = c.confirmed
     ? "✓ 문구 확정됨"
     : "이 문구로 확정";
@@ -260,13 +262,73 @@ function renderEditor() {
     }).join("")
     : '<p class="muted">설명 그림·글·각도 표시를 찾지 못했습니다. 필요하면 다시 분석해 주세요.</p>';
   $("information-markers").innerHTML = regions.map((s,i) => `<button data-inspect="${i}" title="${esc(s.subject || s.reason)}">${time(s.start-c.start)}–${time(s.end-c.start)} 설명</button>`).join("");
-  $("title-image").src =
-    `/api/projects/${pid}/clips/${c.id}/title.png?v=${project().revision}`;
+  loadTitlePreview();
   for (const el of document.querySelectorAll("#editor button,#editor input,#editor textarea,#hooks-pane button,#hooks-pane input,#hooks-pane textarea"))
     if (busy()) el.disabled = true;
     else el.disabled = false;
   $("download").disabled = busy() || !c.render_current;
 }
+let titleRequest = 0, titleURL = "", titleObjectURL = null, titleRetryAt = 0;
+async function loadTitlePreview(force = false) {
+  if (!clip()) return;
+  const url = `/api/projects/${pid}/clips/${cid}/title.png?v=${project().revision}`;
+  if (!force && url === titleURL) return;
+  titleURL = url;
+  const request = ++titleRequest;
+  $("title-image").hidden = true;
+  $("preview-error").hidden = true;
+  try {
+    const response = await fetch(url, { cache: "no-cache" });
+    if (!response.ok) {
+      const data = await response.json();
+      throw Error(data.error || "후킹 미리보기를 불러오지 못했습니다.");
+    }
+    const blob = await response.blob();
+    if (request !== titleRequest) return;
+    const objectURL = URL.createObjectURL(blob);
+    const img = new Image();
+    img.src = objectURL;
+    try { await img.decode(); } catch (e) { URL.revokeObjectURL(objectURL); throw e; }
+    if (request !== titleRequest) { URL.revokeObjectURL(objectURL); return; }
+    if (titleObjectURL) URL.revokeObjectURL(titleObjectURL);
+    titleObjectURL = objectURL;
+    $("title-image").src = objectURL;
+    $("title-image").hidden = false;
+    titleRetryAt = 0;
+  } catch (e) {
+    if (request !== titleRequest) return;
+    $("preview-error").textContent = e instanceof TypeError
+      ? "앱 서버 연결이 끊겼습니다. 시작.command를 실행한 뒤 미리보기 재시도를 눌러 주세요."
+      : e.message;
+    $("preview-error").hidden = false;
+    titleRetryAt = Date.now() + 3000;
+  }
+}
+$("retry-preview").onclick = () => {
+  loadTitlePreview(true);
+  $("video").load();
+};
+$("reconnect-source").onclick = safe(async () => {
+  const target = pid;
+  const chosen = await api("/api/choose-file", {});
+  if (chosen.cancelled) return;
+  await editQueue;
+  await api(`/api/projects/${target}/reconnect`, { path: chosen.path });
+  if (pid === target) videoProject = null;
+  await refresh();
+  toast("원본을 다시 연결했습니다. 기존 쇼츠 편집은 유지됩니다.");
+});
+$("video").onerror = () => {
+  $("source-error").textContent = "원본을 읽지 못했습니다. 앱 서버·파일 다운로드 상태를 확인하거나 같은 원본을 다시 연결해 주세요.";
+  $("source-error").hidden = false;
+};
+$("video").addEventListener("loadedmetadata", () => { $("source-error").hidden = true; });
+setInterval(() => {
+  if (titleRetryAt && Date.now() >= titleRetryAt) { titleRetryAt = 0; loadTitlePreview(true); }
+}, 1000);
+window.addEventListener("beforeunload", e => {
+  if (titleDrafts.size) { e.preventDefault(); e.returnValue = ""; }
+});
 function informationRegions() {
   const c = clip();
   if (!c) return [];
@@ -328,10 +390,10 @@ function updatePreview() {
   $("center-label").value = Math.round(s.center*100)+"%";
 }
 let editQueue = Promise.resolve();
-function edit(action, extra = {}) {
+function edit(action, extra = {}, target = { pid, cid }) {
   if (!project()) return Promise.resolve();
-  const targetProject = pid,
-    targetClip = cid;
+  const targetProject = target.pid,
+    targetClip = target.cid;
   const operation = editQueue
     .catch(() => {})
     .then(async () => {
@@ -362,6 +424,7 @@ async function change(changes) {
   return edit("update", { changes });
 }
 async function run(kind, args = {}) {
+  flushTitleDraft();
   await editQueue;
   if (kind === "encode" && !(await chooseExportFolder())) return;
   await api(`/api/projects/${pid}/jobs/${kind}`, args);
@@ -386,6 +449,7 @@ $("clips").onclick = safe(async (e) => {
   }
   const card = e.target.closest("[data-clip]");
   if (card) {
+    flushTitleDraft();
     cancelDrag();
     selectedRegionId = null;
     cid = card.dataset.clip;
@@ -483,27 +547,58 @@ $("merge").onclick = safe(() => edit("merge"));
 $("hooks").onclick = safe(async (e) => {
   const b = e.target.closest("[data-hook]");
   if (b) {
+    clearTimeout(titleTimer);
+    titleDrafts.delete(`${pid}/${cid}`);
     const h = clip().hooks[Number(b.dataset.hook)];
     await change({ hook: h.text, yellow: h.yellow_phrase, confirmed: false });
   }
 });
-$("hook").onchange = safe(() => {
+const titleDrafts = new Map();
+let titleTimer;
+function captureTitleDraft() {
+  if (!clip()) return;
   const hook = $("hook").value;
-  return change({
-    hook,
-    yellow: hook.includes($("yellow").value) ? $("yellow").value : "",
-    confirmed: false,
+  const yellow = hook.includes($("yellow").value) ? $("yellow").value : "";
+  const draft = { pid, cid, changes: { hook, yellow,
+    font_size: Number($("font-size").value), confirmed: false } };
+  titleDrafts.set(`${pid}/${cid}`, draft);
+  $("save-state").textContent = "저장 대기…";
+  $("confirm-hook").textContent = "이 문구로 확정";
+  clearTimeout(titleTimer);
+  titleTimer = setTimeout(() => flushTitleDraft(), 300);
+}
+function flushTitleDraft() {
+  clearTimeout(titleTimer);
+  const key = `${pid}/${cid}`, draft = titleDrafts.get(key);
+  if (!draft || draft.saving) return;
+  draft.saving = true;
+  edit("update", { changes: draft.changes }, draft).then(() => {
+    if (titleDrafts.get(key) === draft) titleDrafts.delete(key);
+  }).catch(e => {
+    draft.saving = false;
+    $("save-state").textContent = "저장 실패 · 입력 내용 유지";
+    toast(e.message);
   });
+}
+for (const id of ["hook", "yellow", "font-size"]) {
+  $(id).oninput = e => { if (!e.isComposing) captureTitleDraft(); };
+  $(id).oncompositionend = captureTitleDraft;
+  $(id).onchange = () => { captureTitleDraft(); flushTitleDraft(); };
+}
+$("confirm-hook").onclick = safe(async () => {
+  captureTitleDraft();
+  const key = `${pid}/${cid}`, draft = titleDrafts.get(key);
+  clearTimeout(titleTimer);
+  draft.saving = true;
+  try {
+    await edit("update", { changes: { ...draft.changes, confirmed: true } }, draft);
+    if (titleDrafts.get(key) === draft) titleDrafts.delete(key);
+  } catch (e) {
+    draft.saving = false;
+    $("save-state").textContent = "저장 실패 · 입력 내용 유지";
+    throw e;
+  }
 });
-$("yellow").onchange = safe(() =>
-  change({ yellow: $("yellow").value, confirmed: false }),
-);
-$("font-size").onchange = safe(() =>
-  change({ font_size: Number($("font-size").value) }),
-);
-$("confirm-hook").onclick = safe(() =>
-  change({ hook: $("hook").value, yellow: $("yellow").value, confirmed: true }),
-);
 $("regenerate").onclick = safe(() =>
   run("hooks", { clip_ids: [cid], fresh: true }),
 );
