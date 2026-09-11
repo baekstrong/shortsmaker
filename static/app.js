@@ -252,10 +252,18 @@ function renderEditor() {
     ? '<p class="muted">설명 화면 찾기를 실행하면 그림·글·각도 표시의 등장 구간을 잡아줍니다.</p>'
     : regions.length ? regions.map((s, i) => {
       const applied = c.frame_overrides?.find(f => f.id === s.id);
-      return `<div class="frame-suggestion ${editingRegion()?.id === s.id ? "selected" : ""}">
+      return `<div data-region-id="${esc(s.id)}" class="frame-suggestion ${editingRegion()?.id === s.id ? "selected" : ""}">
         <button class="information-inspect" data-inspect="${i}">${s.thumbnail ? `<img src="/api/projects/${pid}/clips/${c.id}/information/${s.id}.jpg?v=${project().revision}" alt="설명 자료가 등장하는 원본 화면" loading="lazy">` : ""}
         <strong>${esc(s.subject || "설명 자료")}</strong><span>이 쇼츠 ${time(s.start-c.start)} ~ ${time(s.end-c.start)}</span><small>원본 ${time(s.start)} ~ ${time(s.end)}</small></button>
         <p>${esc(s.reason)}</p><small>추천: ${esc(s.direction)} · ${Math.round(s.zoom*100)}%${s.confidence < .8 ? " · 확인 필요" : ""}</small>
+        <div class="region-time-editor">
+          <small>위치 적용 시간 · 이 쇼츠 시작부터 초 단위</small>
+          <div class="row">
+            <label>적용 시작 (초)<input data-region-start type="number" min="0" max="${Number((c.end-c.start).toFixed(3))}" step="0.001" value="${Number((s.start-c.start).toFixed(3))}"></label>
+            <label>적용 끝 (초)<input data-region-end type="number" min="0" max="${Number((c.end-c.start).toFixed(3))}" step="0.001" value="${Number((s.end-c.start).toFixed(3))}"></label>
+          </div>
+          <div class="row"><button data-region-now="start">현재 재생 위치를 시작으로</button><button data-region-now="end">현재 재생 위치를 끝으로</button><button data-save-region-time>시간 적용</button></div>
+        </div>
         <div class="row"><button data-inspect="${i}">이 구간 위치 조정</button>${s.id ? `<button data-apply-region="${i}">${applied ? "추천 위치 다시 적용" : "추천 위치 적용"}</button>` : ""}</div>
         ${applied ? `<small>✓ ${applied.origin === 'ai' ? 'AI 추천 위치 자동 적용됨 · 필요하면 직접 조정하세요' : '직접 조정한 위치 적용됨'}</small>` : '<small>기존 직접 조정 구간과 겹치면 자동 적용을 건너뜁니다.</small>'}
       </div>`;
@@ -332,7 +340,10 @@ window.addEventListener("beforeunload", e => {
 function informationRegions() {
   const c = clip();
   if (!c) return [];
-  const regions = (c.frame_suggestions || []).filter(s => Number.isFinite(s.start) && Number.isFinite(s.end) && s.id);
+  const regions = (c.frame_suggestions || []).filter(s => Number.isFinite(s.start) && Number.isFinite(s.end) && s.id).map(s => {
+    const applied = c.frame_overrides?.find(f => f.id === s.id);
+    return applied ? { ...s, start: applied.start, end: applied.end } : s;
+  });
   for (const f of c.frame_overrides || []) if (!regions.some(s => s.id === f.id))
     regions.push({ ...f, time:(f.start+f.end)/2, subject:"직접 조정한 설명 구간", reason:"이전에 저장한 구간 위치", direction:"저장된 위치", confidence:1 });
   return regions.sort((a,b) => a.start-b.start);
@@ -640,7 +651,7 @@ function inspectInformation(index) {
   const s = informationRegions()[index];
   selectedRegionId = s.id || null;
   $("video").pause();
-  $("video").currentTime = s.time ?? (s.start+s.end)/2;
+  $("video").currentTime = s.time >= s.start && s.time < s.end ? s.time : (s.start+s.end)/2;
   $("preview").scrollIntoView({ block: "center", behavior: "smooth" });
   shownRevision = -1;
   render();
@@ -648,6 +659,22 @@ function inspectInformation(index) {
 }
 const informationClick = safe(async (e) => {
   if (busy()) return;
+  const card = e.target.closest("[data-region-id]");
+  const now = e.target.closest("[data-region-now]");
+  if (now && card) {
+    card.querySelector(`[data-region-${now.dataset.regionNow}]`).value = Math.max(0, Math.min(clip().end-clip().start, $("video").currentTime-clip().start)).toFixed(3);
+  }
+  if (e.target.closest("[data-save-region-time]") && card) {
+    const start = card.querySelector("[data-region-start]"), end = card.querySelector("[data-region-end]");
+    if (!start.value || !end.value || !start.reportValidity() || !end.reportValidity()) throw Error("적용 시작·끝 시간을 입력해 주세요.");
+    const regionId = card.dataset.regionId;
+    await edit("frame_region_time", { suggestion_id: regionId,
+      start: clip().start + Number(start.value),
+      end: Math.min(clip().end, clip().start + Number(end.value)) });
+    const index = informationRegions().findIndex(s => s.id === regionId);
+    if (index >= 0) inspectInformation(index);
+    toast("위치 적용 시간을 저장했습니다.");
+  }
   const inspect = e.target.closest("[data-inspect]"), apply = e.target.closest("[data-apply-region]");
   if (inspect) inspectInformation(Number(inspect.dataset.inspect));
   if (apply) {

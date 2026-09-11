@@ -214,6 +214,8 @@ def apply_recommendations(clip):
     for s in clip.get("frame_suggestions") or []:
         if not s.get("id") or "start" not in s or "end" not in s:
             continue
+        if any(f["id"] == s["id"] for f in manual):
+            continue
         start, end = max(clip["start"], s["start"]), min(clip["end"], s["end"])
         if end <= start or any(start < f["end"] and end > f["start"] for f in result):
             continue

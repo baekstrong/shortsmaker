@@ -316,9 +316,28 @@ class Service:
             c = next((c for c in p["clips"] if c["id"] == body.get("clip_id")), None)
             if c is None:
                 raise ValueError("쇼츠를 찾을 수 없습니다.")
-            if action == "frame_region":
+            if action == "frame_region_time":
                 sid = body["suggestion_id"]
-                suggestion = next((s for s in (c.get("frame_suggestions") or []) + c.get("frame_overrides", []) if s.get("id") == sid), None)
+                suggestion = next((s for s in c.get("frame_suggestions") or [] if s.get("id") == sid), None)
+                applied = next((f for f in c.get("frame_overrides", []) if f["id"] == sid), None)
+                if suggestion is None and applied is None:
+                    raise ValueError("설명 구간을 다시 선택해 주세요.")
+                start, end = body.get("start"), body.get("end")
+                if (not all(isinstance(t, (int, float)) and not isinstance(t, bool) and math.isfinite(t) for t in (start, end))
+                        or not c["start"] <= start < end <= c["end"]):
+                    raise ValueError("위치 적용 시간은 쇼츠 범위 안에서 시작보다 끝이 늦어야 합니다.")
+                others = [f for f in c.get("frame_overrides", []) if f["id"] != sid]
+                if any(start < f["end"] and end > f["start"] for f in others):
+                    raise ValueError("다른 위치 적용 구간과 시간이 겹칩니다. 시작·끝 시간을 조정해 주세요.")
+                frame = applied or suggestion
+                others.append(dict(id=sid, start=start, end=end, origin="manual",
+                                   zoom=frame["zoom"], center=frame["center"], vertical=frame.get("vertical", .5)))
+                c["frame_overrides"] = sorted(others, key=lambda f: f["start"])
+                if suggestion is not None:
+                    suggestion.update(start=start, end=end)
+            elif action == "frame_region":
+                sid = body["suggestion_id"]
+                suggestion = next((s for s in c.get("frame_overrides", []) + (c.get("frame_suggestions") or []) if s.get("id") == sid), None)
                 if suggestion is None:
                     raise ValueError("설명 구간을 다시 선택해 주세요.")
                 frame = body.get("frame")

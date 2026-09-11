@@ -633,6 +633,9 @@ select:focus-visible {
 .frame-suggestion { border-top: 1px solid var(--line); padding: 12px 0; font-size: 12px; }
 .frame-suggestion button { white-space: normal; text-align: left; }
 .frame-suggestion small { color: var(--muted); }
+.region-time-editor { margin:12px 0; padding:10px; border:1px solid var(--line); border-radius:8px; }
+.region-time-editor .row { flex-wrap:wrap; }
+.region-time-editor input { margin-top:6px; }
 
 .workflow-actions { display: flex; align-items: center; gap: 20px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .workflow-actions > div { flex: 1; }

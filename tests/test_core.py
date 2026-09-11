@@ -305,3 +305,42 @@ def test_hook_selection_uses_exact_text_not_inconsistent_index(tmp_path, monkeyp
     assert ai.hooks(None,p,dict(start=0,end=10),tmp_path)['recommended_index']==1
     result['recommended_text']='후보에 없는 문구'
     with pytest.raises(ValueError):ai.hooks(None,p,dict(start=0,end=10),tmp_path)
+
+
+def test_region_time_edit_preserves_position_and_controls_render_interval(tmp_path):
+    from shortsmaker.framing import apply_recommendations
+    store, p = project(tmp_path)
+    service = Service(store, Jobs(tmp_path))
+    c = new_clip(0, 10)
+    c['frame_suggestions'] = [dict(id='region', start=2, end=4, time=3, zoom=1.5, center=0)]
+    c['frame_overrides'] = [dict(id='region', start=2, end=4, zoom=1.3, center=.2, vertical=.4, origin='manual')]
+    p = store.change(p['id'], lambda p: p.update(clips=[c]))
+    original_key = render_key(p, c)
+    p = service.edit(p['id'], dict(action='frame_region_time', clip_id=c['id'], suggestion_id='region', start=5, end=8))
+    edited = p['clips'][0]
+    assert [(f['start'], f['end']) for f in scenes_for(edited)] == [(0, 5), (5, 8), (8, 10)]
+    assert edited['frame_overrides'][0] == dict(id='region', start=5, end=8, zoom=1.3, center=.2, vertical=.4, origin='manual')
+    assert render_key(p, edited) != original_key
+    # Reanalysis/reapplying a position must not restore the old timing or duplicate its ID.
+    edited['frame_suggestions'][0].update(start=2, end=4)
+    apply_recommendations(edited)
+    assert len(edited['frame_overrides']) == 1
+    assert edited['frame_overrides'][0]['start'] == 5
+    p = service.edit(p['id'], dict(action='frame_region', clip_id=c['id'], suggestion_id='region', frame=dict(zoom=1.5, center=0)))
+    assert p['clips'][0]['frame_overrides'][0]['start'] == 5
+    service.edit(p['id'], dict(action='undo'))
+    p = service.edit(p['id'], dict(action='undo'))
+    assert render_key(p, p['clips'][0]) == original_key
+
+
+@pytest.mark.parametrize('start,end', [(-1, 3), (4, 4), (5, 3), (2, 11), (2, 7), (True, 3), (float('nan'), 3)])
+def test_region_time_rejects_invalid_or_overlapping_without_saving(tmp_path, start, end):
+    store, p = project(tmp_path)
+    service = Service(store, Jobs(tmp_path))
+    c = new_clip(0, 10)
+    c['frame_suggestions'] = [dict(id='region', start=2, end=4, zoom=1.5, center=0)]
+    c['frame_overrides'] = [dict(id='other', start=6, end=8, zoom=1.5, center=1)]
+    p = store.change(p['id'], lambda p: p.update(clips=[c]))
+    with pytest.raises(ValueError):
+        service.edit(p['id'], dict(action='frame_region_time', clip_id=c['id'], suggestion_id='region', start=start, end=end))
+    assert store.load(p['id']) == p
