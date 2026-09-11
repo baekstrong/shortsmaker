@@ -33,6 +33,7 @@ let channels = [],
   mutating = false,
   polling = false;
 let selectedRegionId = null;
+let trimDraft = null;
 let frameDraft = null;
 let dragging = null;
 let sound = localStorage.getItem("sound") !== "off";
@@ -144,6 +145,7 @@ function selectProject(id) {
   flushTitleDraft();
   cancelDrag();
   selectedRegionId = null;
+  trimDraft = null;
   pid = id;
   cid = null;
   shownRevision = -1;
@@ -335,16 +337,90 @@ setInterval(() => {
   if (titleRetryAt && Date.now() >= titleRetryAt) { titleRetryAt = 0; loadTitlePreview(true); }
 }, 1000);
 window.addEventListener("beforeunload", e => {
-  if (titleDrafts.size) { e.preventDefault(); e.returnValue = ""; }
+  if (titleDrafts.size || trimDraft) { e.preventDefault(); e.returnValue = ""; }
+});
+function previewOverrides() {
+  const frames = clip()?.frame_overrides || [];
+  if (trimDraft?.pid !== pid || trimDraft?.cid !== cid) return frames;
+  const existing = frames.find(f => f.id === trimDraft.id) || clip().frame_suggestions?.find(f => f.id === trimDraft.id);
+  return existing ? [...frames.filter(f => f.id !== trimDraft.id), { ...existing, start:trimDraft.start, end:trimDraft.end }] : frames;
+}
+function updateRegionTimeline() {
+  const c = clip(), region = informationRegions().find(s => s.id === selectedRegionId);
+  $("preview-region").hidden = !region;
+  if (!region || !c) return;
+  const duration = c.end-c.start;
+  const start = region.start-c.start, end = region.end-c.start;
+  $("preview-region-name").textContent = region.subject || "직접 조정한 설명 구간";
+  $("preview-region-time").textContent = `${start.toFixed(2)}초 ~ ${end.toFixed(2)}초`;
+  for (const edge of ["start", "end"]) {
+    const input = $(`region-trim-${edge}`);
+    input.min = 0; input.max = duration;
+    input.value = edge === "start" ? start : end;
+    input.disabled = busy();
+  }
+  $("region-trim-fill").style.left = `${100*start/duration}%`;
+  $("region-trim-fill").style.width = `${100*(end-start)/duration}%`;
+}
+for (const edge of ["start", "end"]) {
+  $(`region-trim-${edge}`).oninput = () => {
+    const c = clip(), region = informationRegions().find(s => s.id === selectedRegionId);
+    if (!c || !region || busy()) return;
+    const other = (c.frame_overrides || []).filter(f => f.id !== region.id);
+    const lower = Math.max(c.start, ...other.filter(f => f.end <= region.start).map(f => f.end));
+    const upper = Math.min(c.end, ...other.filter(f => f.start >= region.end).map(f => f.start));
+    const value = c.start + Number($(`region-trim-${edge}`).value);
+    const start = edge === "start" ? Math.max(lower, Math.min(region.end-.01, value)) : region.start;
+    const end = edge === "end" ? Math.min(upper, Math.max(region.start+.01, value)) : region.end;
+    trimDraft = { pid, cid, id:region.id, start, end };
+    $("video").pause();
+    $("video").currentTime = edge === "start" ? start : Math.max(start, end-.001);
+    $("region-trim-status").textContent = "조정 중 · 놓으면 자동 저장";
+    const card = document.querySelector(`[data-region-id="${CSS.escape(region.id)}"]`);
+    if (card) {
+      card.querySelector("[data-region-start]").value = Number((start-c.start).toFixed(3));
+      card.querySelector("[data-region-end]").value = Number((end-c.start).toFixed(3));
+    }
+    updatePreview();
+  };
+  $(`region-trim-${edge}`).onchange = safe(async () => {
+    const draft = trimDraft;
+    if (!draft || busy()) return;
+    $("region-trim-status").textContent = "저장 중…";
+    try {
+      await edit("frame_region_time", { suggestion_id:draft.id, start:draft.start, end:draft.end }, draft);
+      if (trimDraft === draft) {
+        trimDraft = null;
+        $("region-trim-status").textContent = "저장됨";
+        updatePreview();
+      }
+    } catch (e) {
+      if (trimDraft === draft) {
+        trimDraft = null;
+        $("region-trim-status").textContent = "저장 실패 · 다시 조정해 주세요";
+        shownRevision = -1; render();
+      }
+      throw e;
+    }
+  });
+}
+$("preview").onclick = e => {
+  if (e.target !== $("video")) $("preview").focus({ preventScroll:true });
+};
+document.querySelector(".preview-pane").addEventListener("keydown", e => {
+  if (e.code !== "Space" || e.defaultPrevented) return;
+  if (e.target.closest("button,textarea,[contenteditable=true],input:not([type=range])")) return;
+  e.preventDefault();
+  if (!e.repeat) $("play").click();
 });
 function informationRegions() {
   const c = clip();
   if (!c) return [];
   const regions = (c.frame_suggestions || []).filter(s => Number.isFinite(s.start) && Number.isFinite(s.end) && s.id).map(s => {
-    const applied = c.frame_overrides?.find(f => f.id === s.id);
+    const applied = previewOverrides().find(f => f.id === s.id);
     return applied ? { ...s, start: applied.start, end: applied.end } : s;
   });
-  for (const f of c.frame_overrides || []) if (!regions.some(s => s.id === f.id))
+  for (const f of previewOverrides()) if (!regions.some(s => s.id === f.id))
     regions.push({ ...f, time:(f.start+f.end)/2, subject:"직접 조정한 설명 구간", reason:"이전에 저장한 구간 위치", direction:"저장된 위치", confidence:1 });
   return regions.sort((a,b) => a.start-b.start);
 }
@@ -359,7 +435,7 @@ function editingRegion() {
 function activeFrame() {
   if (frameDraft?.pid === pid && frameDraft?.cid === cid) return frameDraft.frame;
   const c = clip(), t = $("video").currentTime;
-  const f = c?.frame_overrides?.find(f => t >= f.start && t < f.end) || c?.manual_frame;
+  const f = previewOverrides().find(f => t >= f.start && t < f.end) || c?.manual_frame;
   return f ? { zoom:f.zoom, center:f.center, vertical:f.vertical ?? .5 } : { zoom:1.5, center:.5, vertical:.5 };
 }
 function frameGeometry(frame) {
@@ -375,6 +451,7 @@ function updatePreview() {
   const p = project(),
     c = clip(),
     v = $("video");
+  updateRegionTimeline();
   if (!p || !c) return;
   const t = v.currentTime;
   const s = activeFrame();
@@ -390,7 +467,7 @@ function updatePreview() {
   $("time").textContent =
     `${time(Math.max(0, t - c.start))} / ${time(c.end - c.start)}`;
   $("frame-info").textContent =
-    `${Math.round(z * 100)}% · ${c.frame_overrides?.some(f => t >= f.start && t < f.end) ? "이 설명 구간에 적용된 위치" : c.manual_frame ? "전체 기본 위치" : "중앙 고정"}`;
+    `${Math.round(z * 100)}% · ${previewOverrides().some(f => t >= f.start && t < f.end) ? "이 설명 구간에 적용된 위치" : c.manual_frame ? "전체 기본 위치" : "중앙 고정"}`;
   const region = editingRegion();
   $("frame-scope").textContent = region ? `지금 조정하면 ${time(region.start-c.start)} ~ ${time(region.end-c.start)} 구간에만 적용` : "지금 조정하면 쇼츠 전체의 기본 위치에 적용";
   $("whole-frame").hidden = !region;
@@ -463,6 +540,7 @@ $("clips").onclick = safe(async (e) => {
     flushTitleDraft();
     cancelDrag();
     selectedRegionId = null;
+    trimDraft = null;
     cid = card.dataset.clip;
     shownRevision = -1;
     $("video").currentTime = clip().start;
@@ -650,11 +728,13 @@ for (const id of ["zoom", "center"]) {
 function inspectInformation(index) {
   const s = informationRegions()[index];
   selectedRegionId = s.id || null;
+  trimDraft = null;
+  $("region-trim-status").textContent = "";
   $("video").pause();
   $("video").currentTime = s.time >= s.start && s.time < s.end ? s.time : (s.start+s.end)/2;
-  $("preview").scrollIntoView({ block: "center", behavior: "smooth" });
   shownRevision = -1;
   render();
+  $("preview-region").scrollIntoView({ block: "nearest", behavior: "smooth" });
   return s;
 }
 const informationClick = safe(async (e) => {
@@ -686,6 +766,7 @@ $("frame-suggestions").onclick = informationClick;
 $("information-markers").onclick = informationClick;
 $("whole-frame").onclick = () => {
   selectedRegionId = null;
+  trimDraft = null;
   const c = clip();
   // Jump to an unadjusted part so the editing scope is unambiguous.
   let t = c.start;
@@ -709,6 +790,7 @@ $("video").onpointermove = (e) => {
   if (!dragging || dragging.pointer !== e.pointerId) return;
   if (dragging.pid !== pid || dragging.cid !== cid || busy()) return cancelDrag();
   const d = dragging, g = d.geometry;
+  if (!frameDraft && Math.hypot(e.clientX-d.startX, e.clientY-d.startY) < 3) return;
   const x = Math.max(0, Math.min(g.sw - 1080, g.x - (e.clientX - d.startX) / d.ratio));
   const y = Math.max(0, Math.min(1920 - g.sh, g.y + (e.clientY - d.startY) / d.ratio));
   frameDraft = { pid, cid, frame: { ...d.frame,

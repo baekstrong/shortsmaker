@@ -17,7 +17,7 @@
               <h2>미리보기</h2>
               <span class="badge">1080 × 1920</span>
             </div>
-            <div id="preview" class="preview">
+            <div id="preview" class="preview" tabindex="0" aria-label="미리보기 · 스페이스바로 재생 또는 일시정지">
               <video id="video" playsinline preload="metadata" tabindex="0" aria-label="영상 위치 조정: 마우스로 드래그하거나 방향키 사용"></video
               ><img id="title-image" alt="후킹 문구 미리보기" />
               <div id="preview-placeholder">구간을 선택해 주세요</div>
@@ -33,6 +33,17 @@
                 value="0"
                 aria-label="영상 탐색"
               /><span id="time">00:00</span>
+            </div>
+            <div id="preview-region" hidden>
+              <div class="row"><strong>선택한 설명 구간</strong><span id="preview-region-time"></span></div>
+              <small id="preview-region-name"></small>
+              <div class="region-trim">
+                <div class="region-trim-track"><div id="region-trim-fill"></div></div>
+                <input id="region-trim-start" type="range" step="0.01" aria-label="설명 구간 적용 시작 시간" />
+                <input id="region-trim-end" type="range" step="0.01" aria-label="설명 구간 적용 끝 시간" />
+              </div>
+              <small>양쪽 손잡이를 드래그하면 적용 시간이 자동 저장됩니다.</small>
+              <p id="region-trim-status" role="status"></p>
             </div>
             <p id="preview-error" class="warning" role="status" hidden></p>
             <p id="source-error" class="warning" role="status" hidden></p>

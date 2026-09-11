@@ -636,6 +636,19 @@ select:focus-visible {
 .region-time-editor { margin:12px 0; padding:10px; border:1px solid var(--line); border-radius:8px; }
 .region-time-editor .row { flex-wrap:wrap; }
 .region-time-editor input { margin-top:6px; }
+#preview-region { margin:12px 0; padding:12px; border:1px solid var(--accent); border-radius:8px; }
+#preview-region .row { justify-content:space-between; flex-wrap:wrap; }
+#preview-region small { display:block; color:var(--muted); margin-top:6px; }
+#region-trim-status { margin:6px 0 0; font-size:12px; }
+.region-trim { position:relative; height:36px; margin:8px 0; }
+.region-trim-track { position:absolute; top:15px; left:8px; right:8px; height:6px; background:var(--line); border-radius:3px; }
+#region-trim-fill { position:absolute; height:100%; background:var(--accent); }
+.region-trim input[type="range"] { position:absolute; inset:0; width:100%; height:36px; margin:0; background:transparent; appearance:none; pointer-events:none; }
+.region-trim input::-webkit-slider-runnable-track { background:transparent; border:0; }
+.region-trim input::-webkit-slider-thumb { appearance:none; pointer-events:auto; width:16px; height:28px; background:var(--accent); border:2px solid #171b1d; border-radius:5px; cursor:ew-resize; }
+.region-trim input::-moz-range-track { background:transparent; border:0; }
+.region-trim input::-moz-range-thumb { pointer-events:auto; width:12px; height:24px; background:var(--accent); border:2px solid #171b1d; border-radius:5px; cursor:ew-resize; }
+.region-trim input:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 
 .workflow-actions { display: flex; align-items: center; gap: 20px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .workflow-actions > div { flex: 1; }
