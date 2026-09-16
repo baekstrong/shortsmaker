@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from time import perf_counter
 from zoneinfo import ZoneInfo
 import json
 
@@ -67,7 +68,13 @@ class Workflow:
                 if stage in completed:
                     continue
                 ctx.progress(f"자동 준비 · {label}")
-                getattr(self.service, stage)(ctx, pid, {})
+                started = perf_counter()
+                try:
+                    getattr(self.service, stage)(ctx, pid, {})
+                finally:
+                    timings = dict(ctx.job.get("stage_seconds", {}))
+                    timings[stage] = round(perf_counter() - started, 3)
+                    ctx.manager.update(ctx.job["id"], stage_seconds=timings)
                 completed.append(stage)
                 args.update(completed=completed, resume_revision=self.store.load(pid)["revision"])
                 ctx.manager.update(ctx.job["id"], args=args)

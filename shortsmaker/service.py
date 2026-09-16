@@ -7,6 +7,7 @@ import sys
 import shutil
 import tempfile
 from pathlib import Path
+from .parallel import parallel_tasks
 from . import ai, media
 from .store import uid
 
@@ -203,35 +204,32 @@ class Service:
     def hooks(self, ctx, pid, args):
         p = self.store.load(pid)
         clips = self.selected(p, args)
-        for i, clip in enumerate(clips):
-            ctx.progress(
-                f"후킹 후보 생성 · {i+1}/{len(clips)} · {clip['title']}",
-                i * 100 / len(clips),
-            )
-            result = ai.hooks(
-                ctx,
-                p,
-                clip,
-                self.store.folder(pid) / "ai-cache",
-                args.get("fresh", False),
+
+        def generate(clip):
+            return ai.hooks(
+                ctx, p, clip, self.store.folder(pid) / "ai-cache", args.get("fresh", False),
             )
 
-            def save(project):
-                c = next(c for c in project["clips"] if c["id"] == clip["id"])
-                c.update(
-                    hooks=result["hooks"],
-                    recommended_index=result["recommended_index"],
-                    recommendation_reason=result["reason"],
-                    hook_analysis={k: result.get(k, "") for k in ("audience_problem", "content_evidence")},
-                    hook_version=2,
-                )
-                if not c["confirmed"] or args.get("replace_selected", False):
-                    recommended = result["hooks"][result["recommended_index"]]
+        ctx.progress(f"후킹 후보 생성 · 0/{len(clips)} 완료 · 최대 2개 동시 분석", 0)
+        with parallel_tasks(ctx, generate, clips) as results:
+            for i, (clip, result) in enumerate(results, 1):
+                def save(project):
+                    c = next(c for c in project["clips"] if c["id"] == clip["id"])
                     c.update(
-                        hook=recommended["text"], yellow=recommended["yellow_phrase"], confirmed=False
+                        hooks=result["hooks"],
+                        recommended_index=result["recommended_index"],
+                        recommendation_reason=result["reason"],
+                        hook_analysis={k: result.get(k, "") for k in ("audience_problem", "content_evidence")},
+                        hook_version=2,
                     )
+                    if not c["confirmed"] or args.get("replace_selected", False):
+                        recommended = result["hooks"][result["recommended_index"]]
+                        c.update(
+                            hook=recommended["text"], yellow=recommended["yellow_phrase"], confirmed=False
+                        )
 
-            self.store.change(pid, save, history=True)
+                self.store.change(pid, save, history=True)
+                ctx.progress(f"후킹 후보 생성 · {i}/{len(clips)} 완료", i * 100 / len(clips))
 
     def framing(self, ctx, pid, args):
         from . import framing

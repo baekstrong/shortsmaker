@@ -285,7 +285,7 @@ def test_hook_refresh_preserves_confirmed_until_explicit_replacement(tmp_path, m
     result=dict(hooks=[dict(text='새 문구',yellow_phrase='새',approach='문제 인식',evaluation='내용과 일치')]*10,
                 recommended_index=0,reason='비교 이유',audience_problem='상황',content_evidence='근거')
     monkeypatch.setattr(ai,'hooks',lambda *args:result)
-    ctx=SimpleNamespace(progress=lambda *args:None)
+    ctx=SimpleNamespace(progress=lambda *args:None, check=lambda:None, abort_parallel=lambda:None)
     service.hooks(ctx,p['id'],{})
     assert store.load(p['id'])['clips'][0]['hook']=='기존 문구'
     service.hooks(ctx,p['id'],dict(replace_selected=True))
@@ -358,13 +358,13 @@ def test_frame_progress_counts_completed_batches_within_clip_range(tmp_path, mon
     progress = []
 
     class Context:
+        def check(self): pass
+        def abort_parallel(self): pass
         def progress(self, message, percent=None):
             progress.append(percent)
 
     def response(*args, **kwargs):
-        # The next batch must not count as completed while its AI request is pending.
-        offset = 0 if len(progress) == 1 else 12
-        assert progress[-1] == pytest.approx(50 + 50 * offset / 13)
+        offset = int(Path(kwargs["images"][0]).stem.split("-")[-1])
         return {"frames": [dict(index=i, left=0, right=1, confidence=1, zoom=1.5)
                            for i in range(offset, min(offset + 12, 13))]}
 
@@ -372,4 +372,7 @@ def test_frame_progress_counts_completed_batches_within_clip_range(tmp_path, mon
     framing.analyze(Context(), dict(source="unused", metadata=dict(width=1920, height=1080),
                                    transcript=[], model="test", effort="test"),
                     dict(start=0, end=13), tmp_path, tmp_path, 50, 100)
-    assert progress == pytest.approx([50, 50 + 600 / 13, 50 + 600 / 13, 100])
+    assert progress[0] == 50
+    assert progress[-1] == 100
+    assert progress == sorted(progress)
+    assert len(progress) == 3

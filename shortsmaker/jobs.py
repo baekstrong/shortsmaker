@@ -28,6 +28,12 @@ def process_identity(pid):
 
 
 def stop_recorded_process(job):
+    records = job.get("processes", []) or [job]
+    for record in records:
+        _stop_process(record)
+
+
+def _stop_process(job):
     pid, identity = job.get("process_pid"), job.get("process_identity")
     if not pid or not identity or process_identity(pid) != identity:
         return
@@ -50,10 +56,16 @@ class Context:
     def __init__(self, manager, job):
         self.manager, self.job = manager, job
         self.cancelled = threading.Event()
+        self.parallel_aborted = threading.Event()
+
+    def abort_parallel(self):
+        self.parallel_aborted.set()
 
     def check(self):
         if self.cancelled.is_set():
             raise Cancelled("작업을 중단했습니다. 완료된 단계는 보존됩니다.")
+        if self.parallel_aborted.is_set():
+            raise RuntimeError("다른 병렬 요청이 실패하여 함께 중단했습니다.")
 
     def progress(self, message, percent=None):
         self.check()
@@ -74,11 +86,7 @@ class Context:
                 start_new_session=True,
             )
             try:
-                self.manager.update(
-                    self.job["id"],
-                    process_pid=proc.pid,
-                    process_identity=process_identity(proc.pid),
-                )
+                self.manager.register_process(self.job["id"], proc.pid, process_identity(proc.pid))
                 if input_text is not None:
                     proc.stdin.write(input_text.encode())
                     proc.stdin.close()
@@ -117,9 +125,7 @@ class Context:
                         except ProcessLookupError:
                             pass
                         proc.wait()
-                self.manager.update(
-                    self.job["id"], process_pid=None, process_identity=None
-                )
+                self.manager.unregister_process(self.job["id"], proc.pid)
 
 
 class Jobs:
@@ -137,6 +143,7 @@ class Jobs:
                 job.update(
                     process_pid=None,
                     process_identity=None,
+                    processes=[],
                     status="interrupted",
                     message="앱이 종료되어 중단되었습니다. 재시도하면 저장된 단계부터 진행합니다.",
                     finished_at=now(),
@@ -168,6 +175,19 @@ class Jobs:
         with self.lock:
             self.items[job_id].update(values)
             atomic_json(self.root / (job_id + ".json"), self.items[job_id])
+
+    def register_process(self, job_id, pid, identity):
+        with self.lock:
+            records = list(self.items[job_id].get("processes", []))
+            records.append(dict(process_pid=pid, process_identity=identity))
+            self.update(job_id, processes=records, **records[0])
+
+    def unregister_process(self, job_id, pid):
+        with self.lock:
+            records = [p for p in self.items[job_id].get("processes", [])
+                       if p["process_pid"] != pid]
+            first = records[0] if records else dict(process_pid=None, process_identity=None)
+            self.update(job_id, processes=records, **first)
 
     def list(self):
         with self.lock:

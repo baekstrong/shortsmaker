@@ -7,6 +7,7 @@ import cv2
 from PIL import Image, ImageDraw
 from . import ai
 from .media import geometry
+from .parallel import parallel_tasks
 
 
 def sample_scenes(ctx, source, clip, folder):
@@ -74,7 +75,8 @@ def analyze(ctx, project, clip, folder, cache_dir, progress_start=0, progress_en
     g = geometry(project["metadata"], current["zoom"], current["center"])
     view_left = g["x"] / g["scaled_width"]
     view_right = (g["x"] + 1080) / g["scaled_width"]
-    for offset in range(0, len(frames), 12):
+
+    def analyze_group(offset):
         group = frames[offset : offset + 12]
         sheet = Image.new("RGB", (1920, 400 * math.ceil(len(group) / 3)), "#121212")
         draw = ImageDraw.Draw(sheet)
@@ -89,10 +91,7 @@ def analyze(ctx, project, clip, folder, cache_dir, progress_start=0, progress_en
             )
         sheet_path = Path(folder) / f"sheet-{offset}.jpg"
         sheet.save(sheet_path, quality=90)
-        ctx.progress(
-            f"그림·글 확인 · 프레임 {offset+1}~{offset+len(group)}/{len(frames)}",
-            progress_start + (progress_end - progress_start) * offset / len(frames),
-        )
+        ctx.check()
         context = " ".join(
             s["text"]
             for s in project["transcript"]
@@ -139,11 +138,18 @@ FRAME 번호마다 정확히 하나: {[f['index'] for f in group]}
                 or not 1 <= r["zoom"] <= 2
             ):
                 raise ValueError("AI 구도 좌표가 올바르지 않습니다.")
-            regions[r["index"]] = r
-        ctx.progress(
-            f"그림·글 확인 · 프레임 {offset+len(group)}/{len(frames)} 완료",
-            progress_start + (progress_end - progress_start) * (offset + len(group)) / len(frames),
-        )
+        return result["frames"]
+
+    completed = 0
+    ctx.progress(f"그림·글 확인 · 프레임 0/{len(frames)} 완료 · 최대 2개 동시 분석", progress_start)
+    with parallel_tasks(ctx, analyze_group, range(0, len(frames), 12)) as results:
+        for _, rows in results:
+            regions.update((r["index"], r) for r in rows)
+            completed += len(rows)
+            ctx.progress(
+                f"그림·글 확인 · 프레임 {completed}/{len(frames)} 완료 · 최대 2개 동시 분석",
+                progress_start + (progress_end - progress_start) * completed / len(frames),
+            )
     return group_information(scenes, frames, regions, current, project["metadata"])
 
 
