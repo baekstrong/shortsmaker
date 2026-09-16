@@ -46,6 +46,9 @@ class FakeConnections:
             raise BufferError("missing", "NOT_FOUND")
         return self.posts[id]
 
+    def posts_by_ids(self, ids):
+        return {pid: self.posts.get(pid) for pid in ids}
+
     def delete(self, id):
         self.posts.pop(id)
 
@@ -123,7 +126,7 @@ def test_refresh_error_never_deletes_media(tmp_path):
     publisher.schedule(Context(), p["id"], args)
     conn.posts = {}
     publisher.refresh()
-    assert all(d["status"] == "unknown" for d in publisher.records()[0]["deliveries"])
+    assert all(d["status"] == "scheduled" and d["error"] for d in publisher.records()[0]["deliveries"])
     assert not conn.deleted
 
 
@@ -234,3 +237,56 @@ def test_buffer_http_errors_are_not_misreported_as_network(tmp_path, monkeypatch
         c.gql('query {}')
     assert caught.value.code == code
     assert '네트워크 연결' not in str(caught.value)
+
+
+def test_batch_lookup_24_posts_uses_one_request():
+    conn = object.__new__(Connections)
+    calls = []
+    def gql(query, variables):
+        calls.append(query)
+        return {name: dict(id=v['id'], status='scheduled') for name, v in variables.items()}
+    conn.gql = gql
+    result = conn.posts_by_ids([str(i) for i in range(24)])
+    assert len(calls) == 1 and len(result) == 24
+    assert calls[0].count(':post(input:') == 24
+
+
+def test_background_refresh_skips_future_and_sent_and_recent(tmp_path, monkeypatch):
+    p, publisher, conn, args = setup(tmp_path)
+    publisher.schedule(Context(), p['id'], args)
+    calls = []
+    monkeypatch.setattr(conn, 'posts_by_ids', lambda ids: calls.append(ids) or {})
+    publisher.refresh(automatic=True)
+    assert calls == []
+    records = publisher.records()
+    for d in records[0]['deliveries']:
+        d.update(status='sent', sent_at=datetime.now(timezone.utc).isoformat())
+    publisher.save(records)
+    publisher.refresh()
+    assert calls == []
+
+
+def test_refresh_rate_limit_preserves_status_and_stops(tmp_path, monkeypatch):
+    p, publisher, conn, args = setup(tmp_path)
+    publisher.schedule(Context(), p['id'], args)
+    def limited(ids):
+        raise BufferError('limited', 'RATE_LIMITED')
+    monkeypatch.setattr(conn, 'posts_by_ids', limited)
+    with pytest.raises(BufferError):
+        publisher.refresh()
+    assert all(d['status']=='scheduled' and d['error']=='limited'
+               for d in publisher.records()[0]['deliveries'])
+    assert not conn.deleted
+
+
+def test_recent_unknown_refresh_is_throttled_across_publisher_instances(tmp_path, monkeypatch):
+    p, publisher, conn, args = setup(tmp_path)
+    publisher.schedule(Context(), p['id'], args)
+    records = publisher.records()
+    for d in records[0]['deliveries']:
+        d.update(status='unknown', refresh_attempt_at=datetime.now(timezone.utc).isoformat())
+    publisher.save(records)
+    def unexpected(ids):
+        pytest.fail('recent refresh must not call Buffer')
+    monkeypatch.setattr(conn, 'posts_by_ids', unexpected)
+    publisher.refresh(automatic=True)

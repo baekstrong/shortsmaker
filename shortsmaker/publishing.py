@@ -178,6 +178,20 @@ class Connections:
             {"input": {"id": post_id}},
         )["post"]
 
+    def posts_by_ids(self, ids):
+        """Buffer supports up to 30 aliased post lookups in one HTTP request."""
+        ids = list(dict.fromkeys(ids))
+        if not ids:
+            return {}
+        if len(ids) > 30:
+            raise ValueError("한 번에 최대 30개 게시물을 조회할 수 있습니다.")
+        variables = {f"p{i}": {"id": pid} for i, pid in enumerate(ids)}
+        definitions = ",".join(f"${name}:PostInput!" for name in variables)
+        fields = " ".join(f"{name}:post(input:${name}){{id status dueAt sentAt externalLink}}"
+                          for name in variables)
+        data = self.gql(f"query({definitions}){{{fields}}}", variables)
+        return {pid: data.get(f"p{i}") for i, pid in enumerate(ids)}
+
     def create(self, channel, text, due_at, url, privacy="public"):
         service = channel["service"]
         if service == "instagram":
@@ -511,33 +525,55 @@ class Publisher:
                 self.save(records)
 
     def refresh_job(self, ctx, pid, args):
-        self.refresh(ctx)
+        self.refresh(ctx, automatic=pid == "__maintenance")
 
-    def refresh(self, ctx=None):
-        # Jobs serialize mutations; also lock for manual reconciliation/background refresh.
+    def refresh(self, ctx=None, automatic=False):
         with self.lock:
             records = self.records()
+            current = datetime.now(timezone.utc)
+            pending = []
             for record in records:
                 if record.get("deleted_at"):
                     continue
                 for d in record["deliveries"]:
-                    if ctx:
-                        ctx.check()
-                    if not d.get("post_id") or d["status"] == "cancelled":
+                    if not d.get("post_id") or d["status"] in ("cancelled", "rejected"):
                         continue
-                    try:
-                        post = self.connections.post(d["post_id"])
-                        d.update(
-                            status=post["status"],
-                            sent_at=post.get("sentAt"),
-                            external_link=post.get("externalLink"),
-                            checked_at=now(),
-                            error=None,
-                        )
-                    except BufferError as exc:
-                        d.update(status="unknown", error=str(exc), checked_at=now())
+                    if d["status"] == "sent" and d.get("sent_at"):
+                        continue
+                    if automatic:
+                        # Persisted timestamps prevent app restarts from repeatedly polling.
+                        last = d.get("refresh_attempt_at") or d.get("checked_at")
+                        if last and current - timestamp(last) < timedelta(hours=1):
+                            continue
+                        if (d["status"] == "scheduled" and d.get("due_at")
+                                and timestamp(d["due_at"]) > current):
+                            continue
+                    pending.append(d)
+            for offset in range(0, len(pending), 30):
+                if ctx:
+                    ctx.check()
+                batch = pending[offset:offset + 30]
+                for d in batch:
+                    d["refresh_attempt_at"] = now()
+                self.save(records)
+                try:
+                    posts = self.connections.posts_by_ids([d["post_id"] for d in batch])
+                except BufferError as exc:
+                    for d in batch:
+                        d["error"] = str(exc)
                     self.save(records)
-                if cleanup_due(record):
+                    # A failed read is not a change to the remote reservation status.
+                    raise
+                for d in batch:
+                    post = posts.get(d["post_id"])
+                    if not post:
+                        d["error"] = "Buffer에서 게시물을 확인하지 못했습니다. 기존 상태를 유지합니다."
+                        continue
+                    d.update(status=post["status"], sent_at=post.get("sentAt"),
+                             external_link=post.get("externalLink"), checked_at=now(), error=None)
+                self.save(records)
+            for record in records:
+                if not record.get("deleted_at") and cleanup_due(record):
                     self.connections.remove_media(record["object_key"])
                     record["deleted_at"] = now()
                     record["deletion_reason"] = "모든 채널 발행 성공 후 14일 경과"
