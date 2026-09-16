@@ -57,7 +57,14 @@ class Store:
                 json.loads(p.read_text())
                 for p in (self.root / "projects").glob("*/project.json")
             ]
-            return sorted(result, key=lambda p: p["updated_at"], reverse=True)
+            return sorted(
+                (p for p in result if not p.get("deleted_at")),
+                key=lambda p: p["updated_at"], reverse=True,
+            )
+
+    def delete(self, project_id):
+        """Remove from the project list while preserving media and reservation references."""
+        return self.change(project_id, lambda p: p.update(deleted_at=now()))
 
     def create(self, source, metadata):
         p = dict(

@@ -132,6 +132,14 @@ def create_app(data_dir=None):
             raise ValueError("가로 롱폼 원본을 선택해 주세요.")
         return jsonify(store.create(path, metadata))
 
+    @app.post("/api/projects/<pid>/delete")
+    def delete_project(pid):
+        with jobs.lock:
+            if jobs.busy(pid):
+                raise Conflict("진행 중인 작업을 완료하거나 중단한 뒤 프로젝트를 삭제해 주세요.")
+            store.delete(pid)
+        return jsonify(ok=True)
+
     @app.post("/api/projects/<pid>/edit")
     def edit(pid):
         return jsonify(present(service.edit(pid, request.json)))

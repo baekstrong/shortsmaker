@@ -201,7 +201,7 @@ function render() {
   $("projects").innerHTML = state.projects
     .map(
       (p) =>
-        `<button data-project="${p.id}" class="${p.id === pid ? "active" : ""}">${esc(p.name)}<small>${time(p.metadata.duration)} · 쇼츠 ${p.clips.length}개</small></button>`,
+        `<div class="project-row ${p.id === pid ? "active" : ""}"><button data-project="${p.id}" class="project-select">${esc(p.name)}<small>${time(p.metadata.duration)} · 쇼츠 ${p.clips.length}개</small></button><button class="project-delete" data-delete-project="${p.id}" aria-label="${esc(p.name)} 프로젝트 목록에서 삭제" title="프로젝트 목록에서 삭제" ${state.jobs.some((j) => j.project_id === p.id && ["running", "queued"].includes(j.status)) ? "disabled" : ""}>삭제</button></div>`,
     )
     .join("");
   $("empty").hidden = !!p;
@@ -558,10 +558,41 @@ async function run(kind, args = {}) {
   shownRevision = -1;
   render();
 }
-$("projects").onclick = (e) => {
+$("projects").onclick = safe(async (e) => {
+  const remove = e.target.closest("[data-delete-project]");
+  if (remove) {
+    const target = remove.dataset.deleteProject;
+    const p = state.projects.find((p) => p.id === target);
+    if (!p || !confirm(`“${p.name}” 프로젝트를 목록에서 삭제할까요?\n원본 영상, 내보낸 영상과 기존 예약은 유지됩니다.`)) return;
+    flushTitleDraft();
+    await editQueue;
+    await api(`/api/projects/${target}/delete`, {});
+    state.projects = state.projects.filter((p) => p.id !== target);
+    if (pid === target) {
+      cancelDrag();
+      pid = null;
+      cid = null;
+      shownRevision = -1;
+      videoProject = null;
+      selectedRegionId = null;
+      trimDraft = null;
+      frameDraft = null;
+      $("video").pause();
+      $("video").removeAttribute("src");
+      $("video").load();
+      ++titleRequest;
+      $("title-image").hidden = true;
+      $("preview-placeholder").hidden = false;
+      localStorage.removeItem("project");
+      if (state.projects.length) selectProject(state.projects[0].id);
+    }
+    render();
+    toast("프로젝트를 목록에서 삭제했습니다.");
+    return;
+  }
   const el = e.target.closest("[data-project]");
   if (el) selectProject(el.dataset.project);
-};
+});
 $("clips").onclick = safe(async (e) => {
   const input = e.target.closest("[data-include]");
   if (input) {

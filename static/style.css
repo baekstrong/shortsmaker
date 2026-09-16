@@ -109,7 +109,8 @@ nav button {
   white-space: normal;
   margin-bottom: 6px;
 }
-nav button.active {
+nav button.active,
+.project-row.active {
   background: #2c3230;
   color: var(--accent);
 }
@@ -803,3 +804,8 @@ main > header h1 { font-size:22px; margin:3px 0; }
   #job-status { flex-direction:column; }
   .work-grid > section { height:65dvh; }
 }
+
+.project-row { display: flex; align-items: center; gap: 8px; border-radius: 8px; margin-bottom: 6px; }
+.project-row .project-select { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; color: inherit; }
+.project-row .project-delete { flex: none; width: auto; margin: 0 10px 0 0; padding: 8px; font-size: 12px; color: #d5a9a1; }
+.project-row .project-delete:hover:not(:disabled) { background: #50312c; color: #fff; }
