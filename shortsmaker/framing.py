@@ -65,7 +65,7 @@ def sample_scenes(ctx, source, clip, folder):
         cap.release()
 
 
-def analyze(ctx, project, clip, folder, cache_dir):
+def analyze(ctx, project, clip, folder, cache_dir, progress_start=0, progress_end=100):
     scenes, frames = sample_scenes(ctx, project["source"], clip, folder)
     if not frames:
         raise ValueError("정보 확인용 프레임을 읽을 수 없습니다. 원본을 확인하고 다시 시도해 주세요.")
@@ -89,7 +89,10 @@ def analyze(ctx, project, clip, folder, cache_dir):
             )
         sheet_path = Path(folder) / f"sheet-{offset}.jpg"
         sheet.save(sheet_path, quality=90)
-        ctx.progress(f"그림·글 확인 · 프레임 {offset+1}~{offset+len(group)}/{len(frames)}")
+        ctx.progress(
+            f"그림·글 확인 · 프레임 {offset+1}~{offset+len(group)}/{len(frames)}",
+            progress_start + (progress_end - progress_start) * offset / len(frames),
+        )
         context = " ".join(
             s["text"]
             for s in project["transcript"]
@@ -137,6 +140,10 @@ FRAME 번호마다 정확히 하나: {[f['index'] for f in group]}
             ):
                 raise ValueError("AI 구도 좌표가 올바르지 않습니다.")
             regions[r["index"]] = r
+        ctx.progress(
+            f"그림·글 확인 · 프레임 {offset+len(group)}/{len(frames)} 완료",
+            progress_start + (progress_end - progress_start) * (offset + len(group)) / len(frames),
+        )
     return group_information(scenes, frames, regions, current, project["metadata"])
 
 

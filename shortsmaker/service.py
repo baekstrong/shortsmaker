@@ -238,14 +238,17 @@ class Service:
 
         p = self.store.load(pid)
         self.source(p)
-        for clip in self.selected(p, args):
-            ctx.progress("그림·글 잘림 확인 · " + clip["title"])
+        clips = self.selected(p, args)
+        for i, clip in enumerate(clips):
+            ctx.progress("그림·글 잘림 확인 · " + clip["title"], i * 100 / len(clips))
             result = framing.analyze(
                 ctx,
                 p,
                 clip,
                 self.store.folder(pid) / "frames" / clip["id"],
                 self.store.folder(pid) / "ai-cache",
+                i * 100 / len(clips),
+                (i + 1) * 100 / len(clips),
             )
 
             def save(project):

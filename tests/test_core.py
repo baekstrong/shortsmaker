@@ -344,3 +344,32 @@ def test_region_time_rejects_invalid_or_overlapping_without_saving(tmp_path, sta
     with pytest.raises(ValueError):
         service.edit(p['id'], dict(action='frame_region_time', clip_id=c['id'], suggestion_id='region', start=start, end=end))
     assert store.load(p['id']) == p
+
+
+def test_frame_progress_counts_completed_batches_within_clip_range(tmp_path, monkeypatch):
+    from PIL import Image
+    from shortsmaker import framing
+
+    image = tmp_path / "frame.jpg"
+    Image.new("RGB", (32, 18)).save(image)
+    frames = [dict(index=i, scene=0, time=i, path=str(image)) for i in range(13)]
+    monkeypatch.setattr(framing, "sample_scenes", lambda *args: ([], frames))
+    monkeypatch.setattr(framing, "group_information", lambda *args: [])
+    progress = []
+
+    class Context:
+        def progress(self, message, percent=None):
+            progress.append(percent)
+
+    def response(*args, **kwargs):
+        # The next batch must not count as completed while its AI request is pending.
+        offset = 0 if len(progress) == 1 else 12
+        assert progress[-1] == pytest.approx(50 + 50 * offset / 13)
+        return {"frames": [dict(index=i, left=0, right=1, confidence=1, zoom=1.5)
+                           for i in range(offset, min(offset + 12, 13))]}
+
+    monkeypatch.setattr(framing.ai, "call", response)
+    framing.analyze(Context(), dict(source="unused", metadata=dict(width=1920, height=1080),
+                                   transcript=[], model="test", effort="test"),
+                    dict(start=0, end=13), tmp_path, tmp_path, 50, 100)
+    assert progress == pytest.approx([50, 50 + 600 / 13, 50 + 600 / 13, 100])

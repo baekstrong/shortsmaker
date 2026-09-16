@@ -154,6 +154,48 @@ function selectProject(id) {
   render();
   safe(loadReservations)();
 }
+function renderJobs(jobs) {
+  const container = $("job-status");
+  for (const node of [...container.children]) {
+    if (!jobs.some((j) => j.id === node.dataset.job)) node.remove();
+  }
+  jobs.forEach((j, index) => {
+    let node = [...container.children].find((n) => n.dataset.job === j.id);
+    if (!node) {
+      node = document.createElement("div");
+      node.dataset.job = j.id;
+      node.innerHTML = '<div class="job-fill" aria-hidden="true"></div><div class="job-copy"><strong class="job-state"></strong><span class="job-message"></span></div><strong class="job-percent"></strong><button class="job-action"></button>';
+    }
+    if (container.children[index] !== node) container.insertBefore(node, container.children[index] || null);
+    const running = j.status === "running";
+    const active = running || j.status === "queued";
+    const known = typeof j.progress === "number" && Number.isFinite(j.progress);
+    const percent = j.status === "succeeded" ? 100 : known ? Math.max(0, Math.min(100, j.progress)) : null;
+    node.className = `job ${j.status}${running && percent === null ? " indeterminate" : ""}`;
+    node.style.setProperty("--job-progress", `${percent ?? 0}%`);
+    node.setAttribute("aria-busy", String(active));
+    const labels = { running: "작업 진행 중", queued: "작업 대기 중", succeeded: "작업 완료", failed: "작업 실패", interrupted: "작업 중단됨", cancelled: "작업 취소됨" };
+    node.querySelector(".job-state").textContent = labels[j.status] || j.status;
+    node.querySelector(".job-message").textContent = j.message;
+    const meter = node.querySelector(".job-percent");
+    meter.textContent = percent !== null && j.status !== "queued" ? `${Math.floor(percent)}%` : running ? "처리 중" : "";
+    meter.setAttribute("aria-label", running ? "현재 단계 진행률" : "진행률");
+    if (running) {
+      meter.setAttribute("role", "progressbar");
+      meter.setAttribute("aria-valuemin", "0");
+      meter.setAttribute("aria-valuemax", "100");
+    } else meter.removeAttribute("role");
+    if (percent !== null) meter.setAttribute("aria-valuenow", String(Math.floor(percent)));
+    else meter.removeAttribute("aria-valuenow");
+    const button = node.querySelector(".job-action");
+    delete button.dataset.cancel;
+    delete button.dataset.retry;
+    button.hidden = !(active || ["failed", "interrupted", "cancelled"].includes(j.status));
+    button.textContent = active ? "중단" : "재시도";
+    if (active) button.dataset.cancel = j.id;
+    else if (!button.hidden) button.dataset.retry = j.id;
+  });
+}
 function render() {
   const p = project();
   $("projects").innerHTML = state.projects
@@ -181,12 +223,7 @@ function render() {
     )
     .join("");
   const relevant = state.jobs.filter((j) => j.project_id === pid).slice(0, 2);
-  $("job-status").innerHTML = relevant
-    .map(
-      (j) =>
-        `<div class="job ${j.status}"><span>${esc(j.message)}</span>${j.progress !== null && j.status === "running" ? `<progress max="100" value="${j.progress}"></progress>` : ""}${["running", "queued"].includes(j.status) ? `<button data-cancel="${j.id}">중단</button>` : ["failed", "interrupted", "cancelled"].includes(j.status) ? `<button data-retry="${j.id}">재시도</button>` : "<small>✓ 완료</small>"}</div>`,
-    )
-    .join("");
+  renderJobs(relevant);
   for (const b of document.querySelectorAll(
     "[data-stage],#prepare-auto,#schedule-open,#add-clip,#undo,[data-align]",
   ))
