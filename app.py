@@ -3,8 +3,6 @@
 import json
 import os
 import subprocess
-import threading
-import time
 from pathlib import Path
 from urllib.parse import urlparse
 from flask import Flask, request, jsonify, send_file
@@ -264,20 +262,6 @@ if __name__ == "__main__":
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, shutdown)
 
-    def maintenance():
-        while True:
-            try:
-                jobs = app.extensions["jobs"]
-                records = app.extensions["publisher"].records()
-                if any(not r.get("deleted_at") for r in records) and not any(
-                    j["status"] in ("running", "queued") for j in jobs.list()
-                ):
-                    jobs.submit("__maintenance", "refresh")
-            except Exception:
-                app.logger.exception("예약 상태 자동 확인을 시작하지 못했습니다.")
-            time.sleep(3600)
-
-    threading.Thread(target=maintenance, daemon=True).start()
     app.run(
         host="127.0.0.1",
         port=int(os.environ.get("SHORTSMAKER_PORT", "5099")),

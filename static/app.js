@@ -965,7 +965,7 @@ async function buildCalendar(initial = false) {
   const requestId = ++calendarRequest;
   calendarPlan = null;
   $("schedule-submit").disabled = true;
-  $("calendar-message").textContent = "Buffer의 기존 예약을 확인하고 달력을 배치하고 있습니다…";
+  $("calendar-message").textContent = "이 앱에 저장된 예약을 기준으로 달력을 배치하고 있습니다…";
   $("calendar-grid").innerHTML = $("calendar-agenda").innerHTML = "";
   const preferences = savedSchedulePreferences();
   const selected = initial ? undefined : [...document.querySelectorAll("[data-channel]:checked")].map(c => c.dataset.channel);

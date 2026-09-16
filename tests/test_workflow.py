@@ -120,12 +120,24 @@ def test_calendar_is_read_only_until_idempotent_confirmation(tmp_path):
     assert w.load(plan['id'])['status']=='completed'
 
 
-def test_calendar_checks_external_conflicts_and_edited_content(tmp_path):
-    w,p,conn,service=setup(tmp_path);plan=w.make_plan(p['id'],{})
-    conn.remote.append(dict(id='existing',channelId='instagram',text='외부 예약',dueAt=plan['items'][0]['due_at'],status='scheduled'))
-    with pytest.raises(ValueError,match='다른 예약'): w.confirm(p['id'],plan['id'])
+def test_calendar_uses_local_reservations_without_remote_reads(tmp_path, monkeypatch):
+    w,p,conn,service=setup(tmp_path)
+    def unexpected(*args):
+        pytest.fail('예약 흐름은 외부 게시물 조회를 하지 않아야 합니다')
+    monkeypatch.setattr(conn, 'scheduled_posts', unexpected)
+    monkeypatch.setattr(conn, 'post', unexpected)
     plan=w.make_plan(p['id'],{})
-    assert plan['items'][0]['date'] != conn.remote[0]['dueAt'][:10]
+    job=w.confirm(p['id'],plan['id'])
+    job['status']='running'
+    w.publish(Context(w.jobs,job),p['id'],job['args'])
+    assert len(conn.created)==6
+    assert all(d['status']=='scheduled' and d['post_id']
+               for r in w.publisher.records() for d in r['deliveries'])
+
+
+def test_calendar_still_rejects_edited_content(tmp_path):
+    w,p,conn,service=setup(tmp_path)
+    plan=w.make_plan(p['id'],{})
     w.store.change(p['id'],lambda p:p['clips'][0].update(hook='수정'))
     with pytest.raises(ValueError,match='편집'): w.confirm(p['id'],plan['id'])
     assert not conn.created

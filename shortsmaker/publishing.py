@@ -514,15 +514,8 @@ class Publisher:
                     )
                     self.save(records)
                     raise
-                # Persist ID before checking cancellation or fetching status.
+                # The creation response already contains the reservation ID and status.
                 ctx.check()
-                checked = self.connections.post(d["post_id"])
-                d.update(
-                    status=checked["status"],
-                    sent_at=checked.get("sentAt"),
-                    checked_at=now(),
-                )
-                self.save(records)
 
     def refresh_job(self, ctx, pid, args):
         self.refresh(ctx, automatic=pid == "__maintenance")

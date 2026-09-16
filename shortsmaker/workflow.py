@@ -145,7 +145,7 @@ class Workflow:
         p = self.store.load(pid)
         clips = self.selected(p)
         channels = self.channels(args.get("channel_ids"))
-        remote = self.publisher.connections.scheduled_posts(channels)
+        remote = []  # Calendar uses this app's saved reservations only.
         privacy = args.get("youtube_privacy", "public")
         if privacy not in ("public", "unlisted", "private"):
             raise ValueError("YouTube 공개 범위를 확인해 주세요.")
@@ -190,8 +190,8 @@ class Workflow:
             raise ValueError("다른 프로젝트의 달력입니다.")
         if plan.get("job_id"):
             return self.jobs.items[plan["job_id"]]
-        channels = self.channels(plan["channel_ids"])
-        remote = self.publisher.connections.scheduled_posts(channels)
+        channels = plan["channels"]
+        remote = []  # Calendar uses this app's saved reservations only.
         with self.jobs.lock:
             plan = self.load(plan_id)
             if plan.get("job_id"):
@@ -217,15 +217,15 @@ class Workflow:
         if plan["project_id"] != pid or plan["status"] not in ("confirmed", "completed"):
             raise ValueError("먼저 예약 달력을 확인하고 확정해 주세요.")
         self.check_content(plan)
-        channels = self.channels(plan["channel_ids"])
-        self.check_dates(plan, channels, self.publisher.connections.scheduled_posts(channels))
+        channels = plan["channels"]
+        self.check_dates(plan, channels, [])
         ids = list(plan["keys"])
         ctx.progress("1/2 · 확정한 쇼츠 인코딩")
         self.service.encode(ctx, pid, {"clip_ids": ids})  # Current completed files are reused.
         self.event(ctx, "encode")
         ctx.check()
         self.check_content(plan)
-        self.check_dates(plan, channels, self.publisher.connections.scheduled_posts(channels))
+        self.check_dates(plan, channels, [])
         ctx.progress("2/2 · 달력에 확정한 날짜로 업로드·예약")
         self.publisher.schedule(ctx, pid, dict(clip_ids=ids, channel_ids=plan["channel_ids"],
                                schedule=plan["items"], youtube_privacy=plan["youtube_privacy"]))
