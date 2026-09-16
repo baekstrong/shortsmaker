@@ -199,3 +199,24 @@ def test_calendar_cannot_approve_without_export_folder(tmp_path):
     with pytest.raises(ValueError,match='저장 폴더'):w.confirm(p['id'],plan['id'])
     assert not any(c['confirmed'] for c in w.store.load(p['id'])['clips'])
     assert not w.load(plan['id']).get('job_id')
+
+
+def test_calendar_changes_and_publish_share_persisted_channels(tmp_path):
+    from shortsmaker.publishing import Connections as RealConnections
+    w, p, fake, service = setup(tmp_path)
+    conn = RealConnections(tmp_path / 'env', tmp_path / 'channels.json')
+    calls = []
+    def fetch():
+        calls.append(True)
+        return fake.channels()
+    conn.fetch_channels = fetch
+    conn.upload, conn.create = fake.upload, fake.create
+    w.publisher.connections = conn
+    w.make_plan(p['id'], {})
+    w.make_plan(p['id'], {'start_date': '2027-12-01'})
+    plan = w.make_plan(p['id'], {'channel_ids': ['youtube'], 'youtube_privacy': 'private'})
+    job = w.confirm(p['id'], plan['id'])
+    job['status'] = 'running'
+    w.publish(Context(w.jobs, job), p['id'], job['args'])
+    assert len(calls) == 1
+    assert len(fake.created) == 3

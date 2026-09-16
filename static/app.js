@@ -1023,6 +1023,15 @@ $("calendar-start").oninput = safe(() => {
   }
   return buildCalendar(!$("channels").querySelector("input"));
 });
+$("channels-refresh").onclick = safe(async () => {
+  $("channels-refresh").disabled = true;
+  try {
+    await api("/api/channels/refresh", {});
+    await buildCalendar(true);
+  } finally {
+    $("channels-refresh").disabled = false;
+  }
+});
 $("channels").onchange = safe(() => buildCalendar());
 $("privacy").onchange = safe(() => buildCalendar(!$("channels").querySelector("input")));
 $("calendar-prev").onclick = () => calendarPlan && monthShift(-1);

@@ -24,7 +24,7 @@ def create_app(data_dir=None):
     store = Store(data_dir or os.environ.get("SHORTSMAKER_DATA", ROOT / "data"))
     jobs = Jobs(store.root)
     service = Service(store, jobs)
-    publisher = Publisher(store, jobs, Connections(ROOT / ".env.local"))
+    publisher = Publisher(store, jobs, Connections(ROOT / ".env.local", store.root / "buffer-channels.json"))
     workflow = Workflow(store, jobs, service, publisher)
     app.extensions.update(store=store, jobs=jobs, service=service, publisher=publisher, workflow=workflow)
 
@@ -83,6 +83,10 @@ def create_app(data_dir=None):
     @app.get("/api/channels")
     def channels():
         return jsonify(channels=publisher.connections.channels())
+
+    @app.post("/api/channels/refresh")
+    def refresh_channels():
+        return jsonify(channels=publisher.connections.channels(refresh=True))
 
     @app.get("/api/reservations")
     def reservations():

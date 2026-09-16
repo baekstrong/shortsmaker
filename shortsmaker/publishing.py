@@ -3,6 +3,7 @@ Unknown mutation outcomes never automatically retry; remote media stays availabl
 """
 
 import json
+import hashlib
 import threading
 import math
 import time
@@ -44,8 +45,11 @@ class BufferError(RuntimeError):
 
 
 class Connections:
-    def __init__(self, env_path):
+    def __init__(self, env_path, channel_cache_path=None):
         self.env_path = Path(env_path)
+        self.channel_cache_path = Path(channel_cache_path) if channel_cache_path else None
+        self.channel_lock = threading.RLock()
+        self.channel_cache = None
         self.rate_limit_until = 0
 
     def config(self):
@@ -131,7 +135,27 @@ class Connections:
             )
         return result["data"]
 
-    def channels(self):
+    def channels(self, refresh=False):
+        # No expiry: only explicit channel refresh or a changed API key re-fetches.
+        fingerprint = hashlib.sha256(self.config().get("BUFFER_API_KEY", "").encode()).hexdigest()
+        with self.channel_lock:
+            cached = self.channel_cache
+            if cached is None and self.channel_cache_path and self.channel_cache_path.exists():
+                try:
+                    cached = json.loads(self.channel_cache_path.read_text())
+                except (ValueError, OSError):
+                    cached = None
+            if not refresh and isinstance(cached, dict) and cached.get("key") == fingerprint and isinstance(cached.get("channels"), list):
+                self.channel_cache = cached
+                return [dict(c) for c in cached["channels"]]
+            channels = self.fetch_channels()
+            cached = dict(key=fingerprint, channels=channels)
+            if self.channel_cache_path:
+                atomic_json(self.channel_cache_path, cached)
+            self.channel_cache = cached
+            return [dict(c) for c in channels]
+
+    def fetch_channels(self):
         organizations = self.gql("{account{organizations{id name}}}")["account"][
             "organizations"
         ]

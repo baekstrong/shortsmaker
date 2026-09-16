@@ -170,8 +170,8 @@ def test_add_tiktok_to_existing_reservation_is_idempotent(tmp_path):
     assert len(publisher.records()) == 1
 
 
-def test_connections_include_tiktok_and_use_video_metadata():
-    conn = object.__new__(Connections)
+def test_connections_include_tiktok_and_use_video_metadata(tmp_path):
+    conn = Connections(tmp_path / "env")
     requests = []
 
     def gql(query, variables=None):
@@ -290,3 +290,49 @@ def test_recent_unknown_refresh_is_throttled_across_publisher_instances(tmp_path
         pytest.fail('recent refresh must not call Buffer')
     monkeypatch.setattr(conn, 'posts_by_ids', unexpected)
     publisher.refresh(automatic=True)
+
+
+def test_channel_cache_survives_restart_refresh_failure_and_key_change(tmp_path):
+    env = tmp_path / 'env'
+    env.write_text('BUFFER_API_KEY=first')
+    cache = tmp_path / 'channels.json'
+    conn = Connections(env, cache)
+    calls = []
+    def fetch():
+        calls.append(True)
+        return [dict(id='one', service='youtube')]
+    conn.fetch_channels = fetch
+    assert conn.channels()[0]['id'] == 'one'
+    conn.channels()[0]['id'] = 'mutated'
+    assert conn.channels()[0]['id'] == 'one'
+    restarted = Connections(env, cache)
+    restarted.fetch_channels = fetch
+    assert restarted.channels()[0]['id'] == 'one'
+    assert len(calls) == 1
+    restarted.channels(refresh=True)
+    assert len(calls) == 2
+    def fail():
+        raise BufferError('limited', 'RATE_LIMITED')
+    restarted.fetch_channels = fail
+    with pytest.raises(BufferError):
+        restarted.channels(refresh=True)
+    assert restarted.channels()[0]['id'] == 'one'
+    env.write_text('BUFFER_API_KEY=second')
+    with pytest.raises(BufferError):
+        restarted.channels()
+    assert 'first' not in cache.read_text()
+
+
+def test_concurrent_channel_reads_fetch_once(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    import time
+    conn = Connections(tmp_path / 'env', tmp_path / 'cache.json')
+    calls = []
+    def fetch():
+        calls.append(True)
+        time.sleep(.02)
+        return []
+    conn.fetch_channels = fetch
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        assert list(pool.map(lambda _: conn.channels(), range(5))) == [[]] * 5
+    assert len(calls) == 1
