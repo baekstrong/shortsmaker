@@ -222,7 +222,8 @@ function render() {
         `<article tabindex="0" role="button" data-clip="${c.id}" class="clip-card ${c.id === cid ? "active" : ""} ${!c.included ? "excluded" : ""}"><div class="row"><span class="badge">SHORT ${String(i + 1).padStart(2, "0")}</span><input type="checkbox" data-include="${c.id}" ${c.included ? "checked" : ""} aria-label="${i + 1}번 쇼츠 작업에 포함" ${busy() ? "disabled" : ""}></div><h3>${esc(c.title)}</h3><small>${time(c.start)} – ${time(c.end)} · ${(c.end - c.start).toFixed(1)}초</small><div><small class="${c.end - c.start > 180 ? "warning" : ""}">${c.end - c.start > 180 ? "3분 초과 · 추가 분할 필요" : c.confirmed ? "✓ 문구 확정" : "문구 확인 대기"}${c.frame_suggestions?.length ? ` · 설명 화면 ${c.frame_suggestions.length}곳` : ""}</small></div></article>`,
     )
     .join("");
-  const relevant = state.jobs.filter((j) => j.project_id === pid).slice(0, 2);
+  // Jobs are newest first; a resumed job replaces the previous status card.
+  const relevant = state.jobs.filter((j) => j.project_id === pid).slice(0, 1);
   renderJobs(relevant);
   for (const b of document.querySelectorAll(
     "[data-stage],#prepare-auto,#schedule-open,#add-clip,#undo,[data-align]",
