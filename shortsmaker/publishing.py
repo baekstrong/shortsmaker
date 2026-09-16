@@ -4,6 +4,10 @@ Unknown mutation outcomes never automatically retry; remote media stays availabl
 
 import json
 import threading
+import math
+import time
+import urllib.error
+from email.utils import parsedate_to_datetime
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -42,6 +46,7 @@ class BufferError(RuntimeError):
 class Connections:
     def __init__(self, env_path):
         self.env_path = Path(env_path)
+        self.rate_limit_until = 0
 
     def config(self):
         cfg = {}
@@ -68,7 +73,18 @@ class Connections:
             ),
         }
 
+    def rate_limit_error(self):
+        minutes = max(1, math.ceil((self.rate_limit_until - time.monotonic()) / 60))
+        hours, minutes = divmod(minutes, 60)
+        wait = f"{hours}시간 {minutes}분" if hours else f"{minutes}분"
+        return BufferError(
+            f"Buffer 요청 횟수 제한에 도달했습니다. 약 {wait} 후 ‘예약 다시 확인’을 눌러 주세요. "
+            "기존 예약은 유지됩니다.", "RATE_LIMITED",
+        )
+
     def gql(self, query, variables=None):
+        if time.monotonic() < self.rate_limit_until:
+            raise self.rate_limit_error()
         key = self.config().get("BUFFER_API_KEY")
         if not key:
             raise ValueError("설정 파일에 Buffer API 키가 필요합니다.")
@@ -84,6 +100,24 @@ class Connections:
         try:
             with urllib.request.urlopen(req, timeout=45) as r:
                 result = json.load(r)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                retry = exc.headers.get("Retry-After", "60") if exc.headers else "60"
+                try:
+                    seconds = float(retry)
+                    if not math.isfinite(seconds):
+                        seconds = 60
+                except (ValueError, TypeError):
+                    try:
+                        seconds = (parsedate_to_datetime(retry) - datetime.now(timezone.utc)).total_seconds()
+                    except (ValueError, TypeError, OverflowError):
+                        seconds = 60
+                self.rate_limit_until = time.monotonic() + max(1, seconds)
+                raise self.rate_limit_error() from exc
+            if exc.code in (401, 403):
+                raise BufferError("Buffer 인증 또는 접근 권한을 확인해 주세요.", "AUTH_ERROR") from exc
+            raise BufferError(f"Buffer 서버가 요청을 처리하지 못했습니다(HTTP {exc.code}). 잠시 후 다시 확인해 주세요.",
+                              "HTTP_ERROR") from exc
         except Exception as exc:
             # Never reflect authorization headers or signed request details into UI/logs.
             raise BufferError(

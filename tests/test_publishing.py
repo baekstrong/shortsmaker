@@ -193,3 +193,44 @@ def test_connections_include_tiktok_and_use_video_metadata():
     assert payload["schedulingType"] == "automatic"
     with pytest.raises(ValueError, match="지원하지 않는"):
         conn.create({"service": "facebook"}, "title", "date", "url")
+
+
+def test_buffer_rate_limit_reports_wait_and_blocks_repeat_requests(tmp_path, monkeypatch):
+    import urllib.error
+    import urllib.request
+    env = tmp_path / 'config'
+    env.write_text('BUFFER_API_KEY=test-secret')
+    c = Connections(env)
+    calls = []
+    def limited(*args, **kwargs):
+        calls.append(1)
+        raise urllib.error.HTTPError('https://api.buffer.com', 429, 'Too Many Requests',
+                                     {'Retry-After': '12248'}, None)
+    monkeypatch.setattr(urllib.request, 'urlopen', limited)
+    for _ in range(2):
+        with pytest.raises(BufferError) as caught:
+            c.gql('{account{organizations{id}}}')
+        assert caught.value.code == 'RATE_LIMITED'
+        assert '3시간 25분' in str(caught.value)
+        assert 'test-secret' not in str(caught.value)
+    assert len(calls) == 1
+    c.rate_limit_until = 0
+    with pytest.raises(BufferError):
+        c.gql('{account{organizations{id}}}')
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize('status,code', [(401, 'AUTH_ERROR'), (403, 'AUTH_ERROR'), (503, 'HTTP_ERROR')])
+def test_buffer_http_errors_are_not_misreported_as_network(tmp_path, monkeypatch, status, code):
+    import urllib.error
+    import urllib.request
+    env = tmp_path / 'config'
+    env.write_text('BUFFER_API_KEY=test-secret')
+    c = Connections(env)
+    def fail(*args, **kwargs):
+        raise urllib.error.HTTPError('https://api.buffer.com', status, 'error', {}, None)
+    monkeypatch.setattr(urllib.request, 'urlopen', fail)
+    with pytest.raises(BufferError) as caught:
+        c.gql('query {}')
+    assert caught.value.code == code
+    assert '네트워크 연결' not in str(caught.value)
