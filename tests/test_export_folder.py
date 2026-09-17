@@ -17,7 +17,11 @@ def test_export_requires_folder_and_copies_to_selected_location(tmp_path, monkey
     cached=tmp_path/'cached.mp4';cached.write_bytes(b'encoded-output')
     monkeypatch.setattr(media,'export_clip',lambda *args:dict(path=str(cached),key='abcdef123456'))
     store.change(p['id'],lambda p:p.update(export_dir=str(destination)))
+    def unsupported_flags(*args, **kwargs):
+        raise OSError(22, 'exFAT rejects macOS file flags')
+    monkeypatch.setattr('shutil.copystat', unsupported_flags)
     service.encode(None,p['id'],{})
+    assert not list(destination.glob('*.tmp'))
     result=store.load(p['id'])['clips'][0]['render']
     assert Path(result['export_path']).parent==destination
     assert Path(result['export_path']).read_bytes()==b'encoded-output'

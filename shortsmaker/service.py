@@ -269,7 +269,8 @@ class Service:
             if not destination.exists():
                 temporary = export_dir / (uid() + ".tmp")
                 try:
-                    shutil.copy2(render["path"], temporary)
+                    # Export video bytes only: exFAT rejects macOS file flags.
+                    shutil.copyfile(render["path"], temporary)
                     temporary.replace(destination)
                 finally:
                     temporary.unlink(missing_ok=True)
