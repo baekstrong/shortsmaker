@@ -50,6 +50,7 @@ class Connections:
         self.channel_cache_path = Path(channel_cache_path) if channel_cache_path else None
         self.channel_lock = threading.RLock()
         self.channel_cache = None
+        # Retry-After is elapsed real time, including time spent asleep.
         self.rate_limit_until = 0
 
     def config(self):
@@ -78,7 +79,7 @@ class Connections:
         }
 
     def rate_limit_error(self):
-        minutes = max(1, math.ceil((self.rate_limit_until - time.monotonic()) / 60))
+        minutes = max(1, math.ceil((self.rate_limit_until - time.time()) / 60))
         hours, minutes = divmod(minutes, 60)
         wait = f"{hours}시간 {minutes}분" if hours else f"{minutes}분"
         return BufferError(
@@ -87,7 +88,7 @@ class Connections:
         )
 
     def gql(self, query, variables=None):
-        if time.monotonic() < self.rate_limit_until:
+        if time.time() < self.rate_limit_until:
             raise self.rate_limit_error()
         key = self.config().get("BUFFER_API_KEY")
         if not key:
@@ -116,7 +117,7 @@ class Connections:
                         seconds = (parsedate_to_datetime(retry) - datetime.now(timezone.utc)).total_seconds()
                     except (ValueError, TypeError, OverflowError):
                         seconds = 60
-                self.rate_limit_until = time.monotonic() + max(1, seconds)
+                self.rate_limit_until = time.time() + max(1, seconds)
                 raise self.rate_limit_error() from exc
             if exc.code in (401, 403):
                 raise BufferError("Buffer 인증 또는 접근 권한을 확인해 주세요.", "AUTH_ERROR") from exc

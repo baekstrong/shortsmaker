@@ -336,3 +336,33 @@ def test_concurrent_channel_reads_fetch_once(tmp_path):
     with ThreadPoolExecutor(max_workers=5) as pool:
         assert list(pool.map(lambda _: conn.channels(), range(5))) == [[]] * 5
     assert len(calls) == 1
+
+
+def test_rate_limit_expires_after_sleep_even_when_monotonic_stalls(tmp_path, monkeypatch):
+    import io
+    import urllib.error
+    import urllib.request
+    from shortsmaker import publishing
+    clock = [1000]
+    monkeypatch.setattr(publishing.time, 'time', lambda: clock[0])
+    monkeypatch.setattr(publishing.time, 'monotonic', lambda: 100)
+    env = tmp_path / 'env'
+    env.write_text('BUFFER_API_KEY=test')
+    conn = Connections(env)
+    calls = []
+    def request(*args, **kwargs):
+        calls.append(True)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError('https://api.buffer.com', 429, 'limited',
+                                         {'Retry-After': '3600'}, None)
+        return io.BytesIO(b'{"data":{"ok":true}}')
+    monkeypatch.setattr(urllib.request, 'urlopen', request)
+    with pytest.raises(BufferError):
+        conn.gql('{}')
+    clock[0] += 1800
+    with pytest.raises(BufferError, match='30분'):
+        conn.gql('{}')
+    assert len(calls) == 1
+    clock[0] += 1801
+    assert conn.gql('{}') == {'ok': True}
+    assert len(calls) == 2
