@@ -967,7 +967,6 @@ async function buildCalendar(initial = false) {
   $("schedule-submit").disabled = true;
   $("calendar-message").textContent = "이 앱에 저장된 예약을 기준으로 달력을 배치하고 있습니다…";
   $("calendar-grid").innerHTML = $("calendar-agenda").innerHTML = "";
-  const preferences = savedSchedulePreferences();
   const selected = initial ? undefined : [...document.querySelectorAll("[data-channel]:checked")].map(c => c.dataset.channel);
   try {
     await editQueue;
@@ -978,11 +977,6 @@ async function buildCalendar(initial = false) {
     });
     if (requestId !== calendarRequest || !$("schedule-dialog").open) return;
     if (initial) channels = plan.channels;
-    // Reuse saved channel choices only when all of them are still connected.
-    if (initial && preferences.channel_ids?.length && preferences.channel_ids.every(id => plan.channels.some(c => c.id === id)) && preferences.channel_ids.length !== plan.channels.length) {
-      $("channels").innerHTML = plan.channels.map(c => `<label class="check"><input type="checkbox" data-channel="${esc(c.id)}" ${preferences.channel_ids.includes(c.id) ? "checked" : ""}>${esc(c.displayName || c.name)} · ${esc(c.service)}</label>`).join("");
-      return buildCalendar(false);
-    }
     calendarPlan = plan;
     if (initial) $("channels").innerHTML = channels.map(c => `<label class="check"><input type="checkbox" data-channel="${esc(c.id)}" checked>${esc(c.displayName || c.name)} · ${esc(c.service)}</label>`).join("");
     $("calendar-start").value = plan.start_date;
@@ -1048,7 +1042,7 @@ $("schedule-submit").onclick = safe(async () => {
       return;
     }
     await api(`/api/projects/${calendarProject}/calendar/${plan.id}/confirm`, {});
-    localStorage.setItem("schedulePreferences", JSON.stringify({ channel_ids: plan.channel_ids, youtube_privacy: plan.youtube_privacy }));
+    localStorage.setItem("schedulePreferences", JSON.stringify({ youtube_privacy: plan.youtube_privacy }));
     $("schedule-dialog").close();
     await refresh();
     toast("달력을 확정했습니다. 인코딩 후 해당 날짜로 자동 예약합니다.");
