@@ -396,3 +396,22 @@ def test_frame_progress_counts_completed_batches_within_clip_range(tmp_path, mon
     assert progress[-1] == 100
     assert progress == sorted(progress)
     assert len(progress) == 3
+
+
+def test_custom_frame_region_add_edit_timing_and_undo(tmp_path):
+    store, p = project(tmp_path)
+    service = Service(store, Jobs(tmp_path))
+    c = new_clip(1, 10)
+    p = store.change(p['id'], lambda p: p.update(clips=[c]))
+    p = service.edit(p['id'], dict(action='frame_region_add', clip_id=c['id'], start=3, end=5))
+    sid = p['clips'][0]['frame_overrides'][0]['id']
+    p = service.edit(p['id'], dict(action='frame_region', clip_id=c['id'], suggestion_id=sid, frame=dict(zoom=1, center=.5)))
+    assert [(s['start'], s['end'], s['zoom']) for s in scenes_for(p['clips'][0])] == [(1, 3, 1.5), (3, 5, 1), (5, 10, 1.5)]
+    for start, end in [(0, 2), (3, 3), (4, 6), (8, 11), (float('nan'), 4)]:
+        with pytest.raises(ValueError):
+            service.edit(p['id'], dict(action='frame_region_add', clip_id=c['id'], start=start, end=end))
+        assert store.load(p['id']) == p
+    p = service.edit(p['id'], dict(action='frame_region_time', clip_id=c['id'], suggestion_id=sid, start=6, end=8))
+    assert [(s['start'], s['end'], s['zoom']) for s in scenes_for(p['clips'][0])] == [(1, 6, 1.5), (6, 8, 1), (8, 10, 1.5)]
+    p = service.edit(p['id'], dict(action='undo'))
+    assert p['clips'][0]['frame_overrides'][0]['start'] == 3

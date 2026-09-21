@@ -338,13 +338,13 @@ function renderEditor() {
         `<button class="hook-option ${i === c.recommended_index ? "recommended" : ""} ${h.text === c.hook ? "selected" : ""}" data-hook="${i}">${i === c.recommended_index ? "<strong>✦ AI 추천</strong>" : ""}${esc(h.text)}${h.approach ? `<small class="hook-evaluation">${esc(h.approach)} · ${esc(h.evaluation || "")}</small>` : ""}</button>`,
     )
     .join("");
-  const f = activeFrame();
+  const f = editingFrame();
   fieldValue("zoom", f.zoom);
   fieldValue("center", f.center);
   $("zoom-label").value = Math.round(f.zoom * 100) + "%";
   $("center-label").value = Math.round(f.center * 100) + "%";
   const regions = informationRegions();
-  $("frame-suggestions").innerHTML = !Array.isArray(c.frame_suggestions)
+  $("frame-suggestions").innerHTML = !Array.isArray(c.frame_suggestions) && !regions.length
     ? '<p class="muted">설명 화면 찾기를 실행하면 그림·글·각도 표시의 등장 구간을 잡아줍니다.</p>'
     : regions.length ? regions.map((s, i) => {
       const applied = c.frame_overrides?.find(f => f.id === s.id);
@@ -452,6 +452,8 @@ function updateRegionTimeline() {
     input.min = 0; input.max = duration;
     input.value = edge === "start" ? start : end;
     input.disabled = busy();
+    const number = $(`selected-region-${edge}`), key = `${pid}/${cid}/${region.id}/${start}/${end}`;
+    if (number.dataset.regionKey !== key) { number.value = Number((edge === "start" ? start : end).toFixed(3)); number.dataset.regionKey = key; }
   }
   $("region-trim-fill").style.left = `${100*start/duration}%`;
   $("region-trim-fill").style.width = `${100*(end-start)/duration}%`;
@@ -512,24 +514,29 @@ function informationRegions() {
   if (!c) return [];
   const regions = (c.frame_suggestions || []).filter(s => Number.isFinite(s.start) && Number.isFinite(s.end) && s.id).map(s => {
     const applied = previewOverrides().find(f => f.id === s.id);
-    return applied ? { ...s, start: applied.start, end: applied.end } : s;
+    const draft = trimDraft?.pid === pid && trimDraft?.cid === cid && trimDraft.id === s.id ? trimDraft : null;
+    return { ...s, ...(applied ? { start:applied.start, end:applied.end } : {}), ...(draft ? { start:draft.start, end:draft.end } : {}) };
   });
   for (const f of previewOverrides()) if (!regions.some(s => s.id === f.id))
     regions.push({ ...f, time:(f.start+f.end)/2, subject:"직접 조정한 설명 구간", reason:"이전에 저장한 구간 위치", direction:"저장된 위치", confidence:1 });
   return regions.sort((a,b) => a.start-b.start);
 }
 function editingRegion() {
-  const t = $("video").currentTime;
   const regions = informationRegions();
-  const selected = regions.find(s => s.id === selectedRegionId && t >= s.start && t < s.end);
+  const selected = regions.find(s => s.id === selectedRegionId);
   if (selected) return selected;
-  const applied = clip()?.frame_overrides?.find(f => t >= f.start && t < f.end);
-  return applied ? regions.find(s => s.id === applied.id) : null;
+  return null;
 }
 function activeFrame() {
   if (frameDraft?.pid === pid && frameDraft?.cid === cid) return frameDraft.frame;
   const c = clip(), t = $("video").currentTime;
   const f = previewOverrides().find(f => t >= f.start && t < f.end) || c?.manual_frame;
+  return f ? { zoom:f.zoom, center:f.center, vertical:f.vertical ?? .5 } : { zoom:1.5, center:.5, vertical:.5 };
+}
+function editingFrame() {
+  if (frameDraft?.pid === pid && frameDraft?.cid === cid) return frameDraft.frame;
+  const region = editingRegion(), c = clip();
+  const f = c?.frame_overrides?.find(f => f.id === region?.id) || c?.manual_frame;
   return f ? { zoom:f.zoom, center:f.center, vertical:f.vertical ?? .5 } : { zoom:1.5, center:.5, vertical:.5 };
 }
 function frameGeometry(frame) {
@@ -566,10 +573,11 @@ function updatePreview() {
   $("frame-scope").textContent = region ? `지금 조정하면 ${time(region.start-c.start)} ~ ${time(region.end-c.start)} 구간에만 적용` : "지금 조정하면 쇼츠 전체의 기본 위치에 적용";
   $("whole-frame").hidden = !region;
   $("reset-frame").textContent = region ? "이 설명 구간을 기본 위치로" : "150% · 중앙 기본값으로";
-  fieldValue("zoom", s.zoom);
-  fieldValue("center", s.center);
-  $("zoom-label").value = Math.round(s.zoom*100)+"%";
-  $("center-label").value = Math.round(s.center*100)+"%";
+  const controls = editingFrame();
+  fieldValue("zoom", controls.zoom);
+  fieldValue("center", controls.center);
+  $("zoom-label").value = Math.round(controls.zoom*100)+"%";
+  $("center-label").value = Math.round(controls.center*100)+"%";
 }
 let editQueue = Promise.resolve();
 function edit(action, extra = {}, target = { pid, cid }) {
@@ -820,6 +828,7 @@ $("auto-frame").onclick = safe(() => run("framing", { clip_ids: [cid] }));
 async function saveFrame(frame) {
   if (!clip() || busy()) return;
   const region = editingRegion();
+  if (region) { $("video").pause(); if ($("video").currentTime < region.start || $("video").currentTime >= region.end) $("video").currentTime = region.start; }
   const fallback = region ? (clip().manual_frame || { zoom:1.5, center:.5, vertical:.5 }) : { zoom:1.5, center:.5, vertical:.5 };
   const draft = { pid, cid, frame: frame || fallback };
   frameDraft = draft;
@@ -833,22 +842,49 @@ async function saveFrame(frame) {
     render();
   }
 }
+for (const button of document.querySelectorAll("[data-zoom]")) {
+  button.onclick = safe(() => saveFrame({ zoom:Number(button.dataset.zoom), center:editingFrame().center, vertical:editingFrame().vertical ?? .5 }));
+}
+for (const edge of ["start", "end"]) {
+  $(`selected-region-now-${edge}`).onclick = () => {
+    if (clip()) $(`selected-region-${edge}`).value = Math.max(0, Math.min(clip().end-clip().start, $("video").currentTime-clip().start)).toFixed(3);
+  };
+}
+$("selected-region-save").onclick = safe(async () => {
+  const region = editingRegion(), c = clip();
+  if (!region || !c || busy()) return;
+  const start = $("selected-region-start"), end = $("selected-region-end");
+  if (!start.value || !end.value || !start.reportValidity() || !end.reportValidity()) throw Error("시작·끝 시간을 입력해 주세요.");
+  await edit("frame_region_time", { suggestion_id:region.id, start:c.start+Number(start.value), end:c.start+Number(end.value) });
+  $("region-trim-status").textContent = "저장됨";
+});
+$("add-frame-region").onclick = safe(async () => {
+  const c = clip();
+  if (!c || busy()) return;
+  const start = $("custom-region-start"), end = $("custom-region-end");
+  if (!start.value || !end.value || !start.reportValidity() || !end.reportValidity()) throw Error("시작·끝 시간을 입력해 주세요.");
+  const previous = new Set(informationRegions().map(s => s.id));
+  await edit("frame_region_add", { start:c.start+Number(start.value), end:c.start+Number(end.value) });
+  const index = informationRegions().findIndex(s => !previous.has(s.id));
+  if (index >= 0) inspectInformation(index);
+  $("custom-region").open = false;
+});
 $("reset-frame").onclick = safe(() => saveFrame(null));
 for (const b of document.querySelectorAll("[data-align]")) {
   b.onclick = safe(() => {
     const center = Number(b.dataset.align);
-    return saveFrame({ ...activeFrame(), center,
+    return saveFrame({ ...editingFrame(), center,
       ...(center === 0.5 ? { vertical: 0.5 } : {}) });
   });
 }
 for (const id of ["zoom", "center"]) {
   $(id).oninput = () => {
     if (!clip() || busy()) return;
-    frameDraft = { pid, cid, frame: { ...activeFrame(), [id]: Number($(id).value) } };
+    frameDraft = { pid, cid, frame: { ...editingFrame(), [id]: Number($(id).value) } };
     $(id + "-label").value = Math.round(Number($(id).value) * 100) + "%";
     updatePreview();
   };
-  $(id).onchange = safe(() => saveFrame({ ...activeFrame(), [id]: Number($(id).value) }));
+  $(id).onchange = safe(() => saveFrame({ ...editingFrame(), [id]: Number($(id).value) }));
 }
 function inspectInformation(index) {
   const s = informationRegions()[index];
@@ -896,7 +932,7 @@ $("whole-frame").onclick = () => {
   // Jump to an unadjusted part so the editing scope is unambiguous.
   let t = c.start;
   for (const f of c.frame_overrides || []) if (t >= f.start && t < f.end) t = f.end;
-  if (t >= c.end) { toast("전체가 설명 구간으로 조정되어 있습니다. 구간 조정을 먼저 해제해 주세요."); return; }
+  if (t >= c.end) t = c.start;
   $("video").pause(); $("video").currentTime = t;
   shownRevision = -1; render();
 };
@@ -906,7 +942,7 @@ $("video").onpointerdown = (e) => {
   $("video").pause();
   $("video").focus({ preventScroll: true });
   dragging = { pointer: e.pointerId, pid, cid, startX: e.clientX, startY: e.clientY,
-    frame: { ...activeFrame() }, geometry: frameGeometry(activeFrame()),
+    frame: { ...editingFrame() }, geometry: frameGeometry(editingFrame()),
     ratio: $("preview").clientWidth / 1080 };
   $("video").setPointerCapture(e.pointerId);
   $("video").classList.add("dragging");
@@ -944,7 +980,7 @@ $("video").onkeydown = safe(async (e) => {
   if (e.key === "Escape") return cancelDrag();
   if (!clip() || busy() || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
   e.preventDefault();
-  const f = activeFrame(), step = e.shiftKey ? 0.05 : 0.01;
+  const f = editingFrame(), step = e.shiftKey ? 0.05 : 0.01;
   const center = Math.max(0, Math.min(1, f.center + (e.key === "ArrowLeft" ? step : e.key === "ArrowRight" ? -step : 0)));
   const vertical = Math.max(0, Math.min(1, (f.vertical ?? 0.5) + (e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0)));
   await saveFrame({ ...f, center, vertical });

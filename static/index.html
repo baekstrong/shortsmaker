@@ -34,17 +34,6 @@
                 aria-label="영상 탐색"
               /><span id="time">00:00</span>
             </div>
-            <div id="preview-region" hidden>
-              <div class="row"><strong>선택한 설명 구간</strong><span id="preview-region-time"></span></div>
-              <small id="preview-region-name"></small>
-              <div class="region-trim">
-                <div class="region-trim-track"><div id="region-trim-fill"></div></div>
-                <input id="region-trim-start" type="range" step="0.01" aria-label="설명 구간 적용 시작 시간" />
-                <input id="region-trim-end" type="range" step="0.01" aria-label="설명 구간 적용 끝 시간" />
-              </div>
-              <small>양쪽 손잡이를 드래그하면 적용 시간이 자동 저장됩니다.</small>
-              <p id="region-trim-status" role="status"></p>
-            </div>
             <p id="preview-error" class="warning" role="status" hidden></p>
             <p id="source-error" class="warning" role="status" hidden></p>
             <div class="row"><button id="retry-preview">미리보기 재시도</button><button id="reconnect-source" title="기존에 편집한 것과 같은 원본 파일을 선택하세요">원본 다시 연결</button></div>
@@ -184,10 +173,32 @@
                 <button id="auto-frame" class="quiet">설명 화면 찾기</button>
               </div>
             <div id="information-markers" class="information-markers" aria-label="설명 화면 구간"></div>
+            <div id="preview-region" hidden>
+              <div class="row"><strong>선택한 설명 구간</strong><span id="preview-region-time"></span></div>
+              <small id="preview-region-name"></small>
+              <div class="region-trim">
+                <div class="region-trim-track"><div id="region-trim-fill"></div></div>
+                <input id="region-trim-start" type="range" step="0.01" aria-label="설명 구간 적용 시작 시간" />
+                <input id="region-trim-end" type="range" step="0.01" aria-label="설명 구간 적용 끝 시간" />
+              </div>
+              <div class="row">
+                <label>적용 시작 (초)<input id="selected-region-start" type="number" min="0" step="0.01" /></label>
+                <label>적용 끝 (초)<input id="selected-region-end" type="number" min="0" step="0.01" /></label>
+              </div>
+              <div class="row"><button id="selected-region-now-start">현재 위치를 시작으로</button><button id="selected-region-now-end">현재 위치를 끝으로</button><button id="selected-region-save">시간 적용</button></div>
+              <small>시간은 이 쇼츠의 시작을 0초로 표시합니다.</small>
+              <small>양쪽 손잡이를 드래그하면 적용 시간이 자동 저장됩니다.</small>
+              <p id="region-trim-status" role="status"></p>
+            </div>
+            <details id="custom-region"><summary>＋ 원하는 시간만 화면 크기·위치 조정</summary>
+              <div class="row"><label>시작 (초)<input id="custom-region-start" type="number" min="0" step="0.01" value="0" /></label><label>끝 (초)<input id="custom-region-end" type="number" min="0" step="0.01" /></label></div>
+              <button id="add-frame-region">이 시간에 조정 구간 만들기</button>
+              <p class="muted">쇼츠 시작 기준 시간입니다. 구간을 만든 뒤 아래 확대율·정렬을 조정하세요.</p>
+            </details>
             <div id="frame-info" class="muted"></div>
             <div id="frame-scope" class="frame-scope"></div>
             <button id="whole-frame" class="quiet" hidden>쇼츠 전체 위치 편집으로</button>
-            <p class="muted">설명 구간을 선택하면 그 구간만 위치를 조정합니다.</p>
+            <p class="muted">구간을 선택하면 재생 위치와 관계없이 그 구간의 크기·위치만 조정합니다.</p>
             <div class="row frame-align" aria-label="영상 정렬">
               <button data-align="0">왼쪽 정렬</button>
               <button data-align="0.5">가운데 정렬</button>
@@ -198,6 +209,7 @@
               ><button id="reveal" class="quiet">폴더 열기 ↗</button>
             </div>
               <button id="reset-frame" class="quiet">150% · 중앙 기본값으로</button>
+              <div class="row" aria-label="확대율 빠른 선택"><button data-zoom="1">100%</button><button data-zoom="1.5">150%</button></div>
               <label
                 >확대율 <output id="zoom-label">150%</output
                 ><input

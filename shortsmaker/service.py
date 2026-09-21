@@ -317,7 +317,17 @@ class Service:
             c = next((c for c in p["clips"] if c["id"] == body.get("clip_id")), None)
             if c is None:
                 raise ValueError("쇼츠를 찾을 수 없습니다.")
-            if action == "frame_region_time":
+            if action == "frame_region_add":
+                start, end = body.get("start"), body.get("end")
+                if (not all(isinstance(t, (int, float)) and not isinstance(t, bool) and math.isfinite(t) for t in (start, end))
+                        or not c["start"] <= start < end <= c["end"]):
+                    raise ValueError("적용 시간은 쇼츠 범위 안에서 시작보다 끝이 늦어야 합니다.")
+                overrides = c.get("frame_overrides", [])
+                if any(start < f["end"] and end > f["start"] for f in overrides):
+                    raise ValueError("이미 조정한 구간과 시간이 겹칩니다. 기존 구간을 선택하거나 시간을 바꿔 주세요.")
+                frame = c.get("manual_frame") or dict(zoom=1.5, center=.5, vertical=.5)
+                c["frame_overrides"] = sorted(overrides + [dict(id=uid(), start=start, end=end, origin="manual", **frame)], key=lambda f: f["start"])
+            elif action == "frame_region_time":
                 sid = body["suggestion_id"]
                 suggestion = next((s for s in c.get("frame_suggestions") or [] if s.get("id") == sid), None)
                 applied = next((f for f in c.get("frame_overrides", []) if f["id"] == sid), None)
