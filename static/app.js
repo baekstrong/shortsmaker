@@ -77,32 +77,60 @@ function safe(fn) {
 function time(t) {
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 }
-function beep() {
-  if (!sound || !audio) return;
-  const osc = audio.createOscillator(),
-    gain = audio.createGain();
-  osc.connect(gain);
-  gain.connect(audio.destination);
-  osc.frequency.value = 660;
-  gain.gain.setValueAtTime(0.05, audio.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.35);
-  osc.start();
-  osc.stop(audio.currentTime + 0.35);
+const savedVolume = Number(localStorage.getItem("soundVolume") ?? 80);
+let soundVolume = Number.isFinite(savedVolume) ? Math.max(10, Math.min(100, savedVolume)) : 80;
+let soundUntil = 0;
+async function unlockAudio() {
+  if (!audio) audio = new AudioContext();
+  if (audio.state !== "running") await audio.resume();
 }
-document.addEventListener(
-  "pointerdown",
-  () => {
-    if (!audio) audio = new AudioContext();
-    if (audio.state === "suspended") audio.resume();
-  },
-  { once: true },
-);
+async function beep(preview = false) {
+  if (!preview && (!sound || !audio)) return;
+  try {
+    await unlockAudio();
+    if (audio.state !== "running" || audio.currentTime < soundUntil) return;
+    const start = audio.currentTime + 0.02;
+    // A short three-note chime, with a sustained body and soft edges.
+    [660, 880, 1046.5].forEach((frequency, index) => {
+      const osc = audio.createOscillator(), gain = audio.createGain();
+      const at = start + index * 0.4;
+      osc.frequency.value = frequency;
+      osc.connect(gain);
+      gain.connect(audio.destination);
+      const level = 0.4 * (soundVolume / 100);
+      gain.gain.setValueAtTime(0, at);
+      gain.gain.linearRampToValueAtTime(level, at + 0.02);
+      gain.gain.setValueAtTime(level, at + 0.2);
+      gain.gain.exponentialRampToValueAtTime(0.001, at + 0.38);
+      osc.start(at);
+      osc.stop(at + 0.4);
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+    });
+    soundUntil = start + 1.2;
+  } catch (error) {
+    if (preview) toast("알림음을 재생하지 못했습니다. 브라우저의 소리 허용 설정을 확인해 주세요.");
+  }
+}
+document.addEventListener("pointerdown", () => { unlockAudio().catch(() => {}); });
+document.addEventListener("keydown", () => { unlockAudio().catch(() => {}); });
+function renderSound() {
+  $("sound").textContent = sound ? "♪ 알림 켜짐" : "♪ 알림 꺼짐";
+  $("sound").setAttribute("aria-pressed", String(sound));
+  $("sound-volume").value = soundVolume;
+  $("sound-volume-value").textContent = `${soundVolume}%`;
+}
 $("sound").onclick = () => {
   sound = !sound;
   localStorage.setItem("sound", sound ? "on" : "off");
-  $("sound").textContent = sound ? "♪ 알림 켜짐" : "♪ 알림 꺼짐";
+  renderSound();
 };
-$("sound").textContent = sound ? "♪ 알림 켜짐" : "♪ 알림 꺼짐";
+$("sound-volume").oninput = (event) => {
+  soundVolume = Number(event.target.value);
+  localStorage.setItem("soundVolume", String(soundVolume));
+  renderSound();
+};
+$("sound-test").onclick = () => beep(true);
+renderSound();
 async function refresh() {
   if (polling) return;
   polling = true;
