@@ -80,11 +80,11 @@ function time(t) {
 const savedVolume = Number(localStorage.getItem("soundVolume") ?? 80);
 let soundVolume = Number.isFinite(savedVolume) ? Math.max(10, Math.min(100, savedVolume)) : 80;
 const soundPresets = {
-  chime: { label: "맑은 3음", type: "sine", notes: [[660, 0.4], [880, 0.4], [1046.5, 0.4]] },
-  bell: { label: "초인종", type: "sine", notes: [[830.6, 0.55], [659.3, 0.75]] },
-  bright: { label: "경쾌한 멜로디", type: "triangle", notes: [[523.3, 0.2], [659.3, 0.2], [784, 0.2], [1046.5, 0.55]] },
-  soft: { label: "차분한 알림", type: "sine", notes: [[440, 0.55], [554.4, 0.65]] },
-  signal: { label: "또렷한 신호", type: "triangle", notes: [[880, 0.22], [880, 0.22], [1174.7, 0.5]] },
+  chime: { label: "맑은 3음", type: "sine", notes: [[660, 0.14], [880, 0.14], [1046.5, 0.18]] },
+  bell: { label: "초인종", type: "sine", notes: [[830.6, 0.18], [659.3, 0.24]] },
+  bright: { label: "경쾌한 멜로디", type: "triangle", notes: [[523.3, 0.1], [659.3, 0.1], [784, 0.1], [1046.5, 0.18]] },
+  soft: { label: "차분한 알림", type: "sine", notes: [[440, 0.2], [554.4, 0.24]] },
+  signal: { label: "또렷한 신호", type: "triangle", notes: [[880, 0.1], [880, 0.1], [1174.7, 0.16]] },
 };
 const savedSound = localStorage.getItem("soundPreset");
 let soundPreset = Object.hasOwn(soundPresets, savedSound) ? savedSound : "chime";
@@ -116,9 +116,11 @@ async function beep(preview = false) {
       gain.connect(audio.destination);
       const level = 0.4 * (soundVolume / 100);
       gain.gain.setValueAtTime(0, at);
-      gain.gain.linearRampToValueAtTime(level, at + 0.02);
-      gain.gain.setValueAtTime(level, at + duration * 0.5);
+      gain.gain.linearRampToValueAtTime(level, at + 0.008);
+      // Keep the same peak volume; finish with a short release and a silent gap.
+      gain.gain.setValueAtTime(level, at + duration - 0.055);
       gain.gain.exponentialRampToValueAtTime(0.001, at + duration - 0.02);
+      gain.gain.linearRampToValueAtTime(0, at + duration - 0.015);
       soundNodes.add(osc);
       osc.onended = () => { soundNodes.delete(osc); osc.disconnect(); gain.disconnect(); };
       osc.start(at);
