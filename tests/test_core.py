@@ -312,7 +312,7 @@ def test_hook_refresh_preserves_confirmed_until_explicit_replacement(tmp_path, m
     assert store.load(p['id'])['clips'][0]['hook']=='기존 문구'
     service.hooks(ctx,p['id'],dict(replace_selected=True))
     c=store.load(p['id'])['clips'][0]
-    assert c['hook']=='새 문구' and not c['confirmed'] and c['hook_version']==2
+    assert c['hook']=='새 문구' and not c['confirmed'] and c['hook_version']==3
     assert c['hook_analysis']['content_evidence']=='근거'
     p=service.edit(p['id'],dict(action='undo'))
     assert p['clips'][0]['hook']=='기존 문구' and p['clips'][0]['confirmed']

@@ -220,7 +220,7 @@ class Service:
                         recommended_index=result["recommended_index"],
                         recommendation_reason=result["reason"],
                         hook_analysis={k: result.get(k, "") for k in ("audience_problem", "content_evidence")},
-                        hook_version=2,
+                        hook_version=3,
                     )
                     if not c["confirmed"] or args.get("replace_selected", False):
                         recommended = result["hooks"][result["recommended_index"]]
