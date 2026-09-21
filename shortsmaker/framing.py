@@ -218,20 +218,3 @@ def merge_touching(results):
         else:
             merged.append(dict(s))
     return merged
-
-
-def apply_recommendations(clip):
-    """Refresh automatic ranges while preserving every manual adjustment."""
-    manual = [dict(f) for f in clip.get("frame_overrides", []) if f.get("origin") != "ai"]
-    result = list(manual)
-    for s in clip.get("frame_suggestions") or []:
-        if not s.get("id") or "start" not in s or "end" not in s:
-            continue
-        if any(f["id"] == s["id"] for f in manual):
-            continue
-        start, end = max(clip["start"], s["start"]), min(clip["end"], s["end"])
-        if end <= start or any(start < f["end"] and end > f["start"] for f in result):
-            continue
-        result.append(dict(id=s["id"], start=start, end=end, zoom=s["zoom"],
-                           center=s["center"], vertical=.5, origin="ai"))
-    clip["frame_overrides"] = sorted(result, key=lambda f: f["start"])

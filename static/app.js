@@ -361,7 +361,7 @@ function renderEditor() {
           <div class="row"><button data-region-now="start">현재 재생 위치를 시작으로</button><button data-region-now="end">현재 재생 위치를 끝으로</button><button data-save-region-time>시간 적용</button></div>
         </div>
         <div class="row"><button data-inspect="${i}">이 구간 위치 조정</button>${s.id ? `<button data-apply-region="${i}">${applied ? "추천 위치 다시 적용" : "추천 위치 적용"}</button>` : ""}</div>
-        ${applied ? `<small>✓ ${applied.origin === 'ai' ? 'AI 추천 위치 자동 적용됨 · 필요하면 직접 조정하세요' : '직접 조정한 위치 적용됨'}</small>` : '<small>기존 직접 조정 구간과 겹치면 자동 적용을 건너뜁니다.</small>'}
+        ${applied ? `<small>✓ 직접 선택한 위치 적용됨</small>` : '<small>추천만 표시 중 · 추천 위치 적용을 눌러야 화면이 바뀝니다.</small>'}
       </div>`;
     }).join("")
     : '<p class="muted">설명 그림·글·각도 표시를 찾지 못했습니다. 필요하면 다시 분석해 주세요.</p>';
@@ -436,7 +436,7 @@ window.addEventListener("beforeunload", e => {
 function previewOverrides() {
   const frames = clip()?.frame_overrides || [];
   if (trimDraft?.pid !== pid || trimDraft?.cid !== cid) return frames;
-  const existing = frames.find(f => f.id === trimDraft.id) || clip().frame_suggestions?.find(f => f.id === trimDraft.id);
+  const existing = frames.find(f => f.id === trimDraft.id);
   return existing ? [...frames.filter(f => f.id !== trimDraft.id), { ...existing, start:trimDraft.start, end:trimDraft.end }] : frames;
 }
 function updateRegionTimeline() {

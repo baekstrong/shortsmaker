@@ -252,7 +252,6 @@ class Service:
             def save(project):
                 c = next(c for c in project["clips"] if c["id"] == clip["id"])
                 c.update(frame_suggestions=result, frame_analysis_version=2)
-                framing.apply_recommendations(c)
                 validate_clip(c, project["metadata"]["duration"])
 
             self.store.change(pid, save, history=True)
@@ -331,9 +330,8 @@ class Service:
                 others = [f for f in c.get("frame_overrides", []) if f["id"] != sid]
                 if any(start < f["end"] and end > f["start"] for f in others):
                     raise ValueError("다른 위치 적용 구간과 시간이 겹칩니다. 시작·끝 시간을 조정해 주세요.")
-                frame = applied or suggestion
-                others.append(dict(id=sid, start=start, end=end, origin="manual",
-                                   zoom=frame["zoom"], center=frame["center"], vertical=frame.get("vertical", .5)))
+                if applied is not None:
+                    others.append(dict(applied, start=start, end=end))
                 c["frame_overrides"] = sorted(others, key=lambda f: f["start"])
                 if suggestion is not None:
                     suggestion.update(start=start, end=end)

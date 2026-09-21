@@ -22,6 +22,7 @@ def create_app(data_dir=None):
     app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     store = Store(data_dir or os.environ.get("SHORTSMAKER_DATA", ROOT / "data"))
+    store.remove_automatic_frames()
     jobs = Jobs(store.root)
     service = Service(store, jobs)
     publisher = Publisher(store, jobs, Connections(ROOT / ".env.local", store.root / "buffer-channels.json"))

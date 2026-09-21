@@ -42,6 +42,26 @@ class Store:
         self.root.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
 
+    def remove_automatic_frames(self):
+        """Retire AI-applied positions, including undo snapshots; keep a local backup."""
+        with self.lock:
+            for path in (self.root / "projects").glob("*/project.json"):
+                project = json.loads(path.read_text())
+                snapshots = [project["clips"], *project.get("history", [])]
+                if not any(f.get("origin") == "ai" for clips in snapshots
+                           for clip in clips for f in clip.get("frame_overrides", [])):
+                    continue
+                backup = self.root / "backups" / "suggestions-only" / path.parent.name / "project.json"
+                if not backup.exists():
+                    atomic_json(backup, project)
+                for clips in snapshots:
+                    for clip in clips:
+                        if "frame_overrides" in clip:
+                            clip["frame_overrides"] = [f for f in clip["frame_overrides"]
+                                                       if f.get("origin") != "ai"]
+                project["revision"] += 1
+                atomic_json(path, project)
+
     def folder(self, project_id):
         if not re.fullmatch(r"[a-f0-9]{32}", project_id):
             raise ValueError("잘못된 프로젝트 ID입니다.")

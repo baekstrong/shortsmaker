@@ -255,25 +255,47 @@ def test_region_position_edit_affects_only_approved_interval_and_undo(tmp_path):
     assert render_key(p,p['clips'][0])==initial
 
 
-def test_auto_information_framing_preserves_manual_edits_and_reset(tmp_path):
-    from shortsmaker.framing import apply_recommendations
-    store,p=project(tmp_path);service=Service(store,Jobs(tmp_path))
-    c=new_clip(0,10)
-    c['frame_suggestions']=[dict(id='left',start=2,end=4,zoom=1.5,center=0)]
-    apply_recommendations(c)
-    assert c['frame_overrides'][0]['origin']=='ai'
-    assert [f['center'] for f in scenes_for(c)]==[.5,0,.5]
-    p=store.change(p['id'],lambda p:p.update(clips=[c]))
-    p=service.edit(p['id'],dict(action='frame_region',clip_id=c['id'],suggestion_id='left',frame=dict(zoom=1.3,center=.2,vertical=.5)))
-    c=p['clips'][0];apply_recommendations(c)
-    assert c['frame_overrides'][0]['center']==.2
-    p=service.edit(p['id'],dict(action='frame_region',clip_id=c['id'],suggestion_id='left',frame=None))
-    c=p['clips'][0];apply_recommendations(c)
-    assert c['frame_overrides'][0]['center']==.5
-    assert c['frame_overrides'][0]['origin']=='manual'
-    c['frame_suggestions']=[dict(id='changed',start=1,end=5,zoom=1.5,center=1)]
-    apply_recommendations(c)
-    assert len(c['frame_overrides'])==1 and c['frame_overrides'][0]['id']=='left'
+def test_information_analysis_only_suggests_and_time_edit_does_not_apply(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from shortsmaker import framing
+    store, p = project(tmp_path)
+    service = Service(store, Jobs(tmp_path))
+    c = new_clip(0, 10)
+    store.change(p['id'], lambda p: p.update(clips=[c]))
+    monkeypatch.setattr(service, 'source', lambda p: None)
+    monkeypatch.setattr(framing, 'analyze', lambda *args: [dict(id='left', start=2, end=4, zoom=1.2, center=0)])
+    service.framing(SimpleNamespace(progress=lambda *args: None), p['id'], {})
+    p = store.load(p['id'])
+    assert p['clips'][0]['frame_suggestions'][0]['center'] == 0
+    assert p['clips'][0]['frame_overrides'] == []
+    original = render_key(p, p['clips'][0])
+    p = service.edit(p['id'], dict(action='frame_region_time', clip_id=c['id'], suggestion_id='left', start=3, end=5))
+    assert p['clips'][0]['frame_overrides'] == []
+    assert render_key(p, p['clips'][0]) == original
+    p = service.edit(p['id'], dict(action='frame_region', clip_id=c['id'], suggestion_id='left', frame=dict(zoom=1.2, center=0)))
+    assert [(f['start'], f['end']) for f in scenes_for(p['clips'][0])] == [(0,3),(3,5),(5,10)]
+    service.framing(SimpleNamespace(progress=lambda *args: None), p['id'], {})
+    assert store.load(p['id'])['clips'][0]['frame_overrides'] == p['clips'][0]['frame_overrides']
+
+
+def test_remove_automatic_frames_preserves_manual_and_cleans_undo(tmp_path):
+    import copy
+    store, p = project(tmp_path)
+    c = new_clip(0,10)
+    manual = dict(id='manual', start=5, end=7, zoom=1.3, center=.2, origin='manual')
+    c['frame_overrides'] = [dict(id='ai', start=2, end=4, zoom=1, center=0, origin='ai'), manual]
+    c['frame_suggestions'] = [dict(id='ai', start=2, end=4, zoom=1, center=0)]
+    p = store.change(p['id'], lambda p: p.update(clips=[c], history=[copy.deepcopy([c])]))
+    store.remove_automatic_frames()
+    migrated = store.load(p['id'])
+    assert migrated['clips'][0]['frame_overrides'] == [manual]
+    assert migrated['clips'][0]['frame_suggestions'] == c['frame_suggestions']
+    assert migrated['history'][0][0]['frame_overrides'] == [manual]
+    assert json.loads((tmp_path / 'backups' / 'suggestions-only' / p['id'] / 'project.json').read_text()) == p
+    store.remove_automatic_frames()
+    assert store.load(p['id']) == migrated
+    restored = Service(store, Jobs(tmp_path)).edit(p['id'], dict(action='undo'))
+    assert restored['clips'][0]['frame_overrides'] == [manual]
 
 
 def test_hook_refresh_preserves_confirmed_until_explicit_replacement(tmp_path, monkeypatch):
@@ -308,7 +330,6 @@ def test_hook_selection_uses_exact_text_not_inconsistent_index(tmp_path, monkeyp
 
 
 def test_region_time_edit_preserves_position_and_controls_render_interval(tmp_path):
-    from shortsmaker.framing import apply_recommendations
     store, p = project(tmp_path)
     service = Service(store, Jobs(tmp_path))
     c = new_clip(0, 10)
@@ -323,7 +344,6 @@ def test_region_time_edit_preserves_position_and_controls_render_interval(tmp_pa
     assert render_key(p, edited) != original_key
     # Reanalysis/reapplying a position must not restore the old timing or duplicate its ID.
     edited['frame_suggestions'][0].update(start=2, end=4)
-    apply_recommendations(edited)
     assert len(edited['frame_overrides']) == 1
     assert edited['frame_overrides'][0]['start'] == 5
     p = service.edit(p['id'], dict(action='frame_region', clip_id=c['id'], suggestion_id='region', frame=dict(zoom=1.5, center=0)))
