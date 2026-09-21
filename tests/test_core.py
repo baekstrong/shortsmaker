@@ -415,3 +415,36 @@ def test_custom_frame_region_add_edit_timing_and_undo(tmp_path):
     assert [(s['start'], s['end'], s['zoom']) for s in scenes_for(p['clips'][0])] == [(1, 6, 1.5), (6, 8, 1), (8, 10, 1.5)]
     p = service.edit(p['id'], dict(action='undo'))
     assert p['clips'][0]['frame_overrides'][0]['start'] == 3
+
+
+def test_split_preserves_hook_and_frames_then_delete_undo(tmp_path):
+    store, p = project(tmp_path)
+    service = Service(store, Jobs(tmp_path))
+    c = new_clip(10, 30, '제목')
+    c.update(hook='기존 후킹', yellow='후킹', hooks=[dict(text='기존 후킹')], confirmed=True,
+             font_size=70, manual_frame=dict(zoom=1.2, center=.4),
+             frame_overrides=[dict(id='region', start=15, end=25, zoom=1, center=.5)],
+             frame_suggestions=[dict(id='region', start=15, end=25, time=18, zoom=1, center=.5)])
+    p = store.change(p['id'], lambda p: p.update(clips=[c]))
+    p = service.edit(p['id'], dict(action='split', clip_id=c['id'], at=20))
+    front, back = p['clips']
+    for part in (front, back):
+        for key in ('hook', 'yellow', 'hooks', 'font_size', 'manual_frame'):
+            assert part[key] == c[key]
+        assert not part['confirmed']
+    assert [(f['start'], f['end']) for f in front['frame_overrides']] == [(15, 20)]
+    assert [(f['start'], f['end']) for f in back['frame_overrides']] == [(20, 25)]
+    split_clips = p['clips']
+    p = service.edit(p['id'], dict(action='delete_clip', clip_id=back['id']))
+    assert p['clips'] == [front]
+    p = service.edit(p['id'], dict(action='undo'))
+    assert p['clips'] == split_clips
+    p = service.edit(p['id'], dict(action='update', clip_id=front['id'], changes=dict(end=18)))
+    assert p['clips'][0]['hook'] == c['hook']
+    assert p['clips'][0]['hooks'] == c['hooks']
+    assert p['clips'][0]['frame_suggestions'][0]['end'] == 18
+    service.edit(p['id'], dict(action='delete_clip', clip_id=front['id']))
+    p = service.edit(p['id'], dict(action='delete_clip', clip_id=back['id']))
+    assert p['clips'] == []
+    p = service.edit(p['id'], dict(action='undo'))
+    assert p['clips'][0]['id'] == back['id']

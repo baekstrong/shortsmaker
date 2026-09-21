@@ -366,18 +366,21 @@ class Service:
                 at = float(body["at"])
                 if not c["start"] + 0.1 < at < c["end"] - 0.1:
                     raise ValueError("구간 안에서 분할 지점을 선택해 주세요.")
-                second = new_clip(at, c["end"], c["title"] + " (2)", c["reason"])
-                c.update(
-                    end=at,
-                    hooks=[],
-                    hook="",
-                    yellow="",
-                    confirmed=False,
-                    framing=[],
-                    frame_suggestions=None,
-                    render=None,
-                )
+                second = copy.deepcopy(c)
+                second.update(id=uid(), start=at, title=c["title"] + " (2)")
+                c["end"] = at
+                for part in (c, second):
+                    part.update(confirmed=False, render=None)
+                    part["frame_overrides"] = [dict(f, start=max(part["start"], f["start"]), end=min(part["end"], f["end"]))
+                        for f in part.get("frame_overrides", []) if f["end"] > part["start"] and f["start"] < part["end"]]
+                    if part.get("frame_suggestions") is not None:
+                        part["frame_suggestions"] = [dict(f, start=max(part["start"], f["start"]), end=min(part["end"], f["end"]))
+                            for f in part["frame_suggestions"] if f["end"] > part["start"] and f["start"] < part["end"]]
+                    validate_clip(part, p["metadata"]["duration"])
                 p["clips"].insert(p["clips"].index(c) + 1, second)
+            elif action == "delete_clip":
+                p["clips"].remove(c)
+                return
             elif action == "merge":
                 i = p["clips"].index(c)
                 if i + 1 >= len(p["clips"]):
@@ -414,7 +417,7 @@ class Service:
                     k in changes and changes[k] != c[k] for k in ("start", "end")
                 )
                 if bounds:
-                    c.update(hooks=[], confirmed=False, framing=[], frame_suggestions=None)
+                    c.update(confirmed=False)
                     changes["confirmed"] = False
                 c.update(changes)
             else:
@@ -422,6 +425,9 @@ class Service:
             if action in ("split", "merge", "update"):
                 c["frame_overrides"] = [dict(f, start=max(c["start"], f["start"]), end=min(c["end"], f["end"]))
                     for f in c.get("frame_overrides", []) if f["end"] > c["start"] and f["start"] < c["end"]]
+            if action == "update" and bounds and c.get("frame_suggestions") is not None:
+                c["frame_suggestions"] = [dict(f, start=max(c["start"], f["start"]), end=min(c["end"], f["end"]))
+                    for f in c["frame_suggestions"] if f["end"] > c["start"] and f["start"] < c["end"]]
             validate_clip(c, p["metadata"]["duration"])
 
         return self.store.change(pid, mutate, revision=body.get("revision"))

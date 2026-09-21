@@ -764,7 +764,28 @@ $("set-start").onclick = safe(() =>
 $("set-end").onclick = safe(() =>
   change({ end: Number($("video").currentTime.toFixed(3)) }),
 );
-$("split").onclick = safe(() => edit("split", { at: $("video").currentTime }));
+$("split").onclick = safe(async () => {
+  const target = { pid, cid }, at = $("video").currentTime;
+  flushTitleDraft();
+  await editQueue;
+  await edit("split", { at }, target);
+});
+$("delete-clip").onclick = safe(async () => {
+  if (!clip() || busy()) return;
+  const target = { pid, cid };
+  const index = project().clips.findIndex(c => c.id === cid);
+  flushTitleDraft();
+  await editQueue;
+  await edit("delete_clip", {}, target);
+  if (pid === target.pid) {
+    cid = project().clips[Math.min(index, project().clips.length-1)]?.id || null;
+    selectedRegionId = null;
+    trimDraft = null;
+    shownRevision = -1;
+    render();
+  }
+  toast("구간을 삭제했습니다. 되돌리기로 복원할 수 있습니다.");
+});
 $("merge").onclick = safe(() => edit("merge"));
 $("hooks").onclick = safe(async (e) => {
   const b = e.target.closest("[data-hook]");
