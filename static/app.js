@@ -79,7 +79,17 @@ function time(t) {
 }
 const savedVolume = Number(localStorage.getItem("soundVolume") ?? 80);
 let soundVolume = Number.isFinite(savedVolume) ? Math.max(10, Math.min(100, savedVolume)) : 80;
+const soundPresets = {
+  chime: { label: "맑은 3음", type: "sine", notes: [[660, 0.4], [880, 0.4], [1046.5, 0.4]] },
+  bell: { label: "초인종", type: "sine", notes: [[830.6, 0.55], [659.3, 0.75]] },
+  bright: { label: "경쾌한 멜로디", type: "triangle", notes: [[523.3, 0.2], [659.3, 0.2], [784, 0.2], [1046.5, 0.55]] },
+  soft: { label: "차분한 알림", type: "sine", notes: [[440, 0.55], [554.4, 0.65]] },
+  signal: { label: "또렷한 신호", type: "triangle", notes: [[880, 0.22], [880, 0.22], [1174.7, 0.5]] },
+};
+const savedSound = localStorage.getItem("soundPreset");
+let soundPreset = Object.hasOwn(soundPresets, savedSound) ? savedSound : "chime";
 let soundUntil = 0;
+const soundNodes = new Set();
 async function unlockAudio() {
   if (!audio) audio = new AudioContext();
   if (audio.state !== "running") await audio.resume();
@@ -88,25 +98,33 @@ async function beep(preview = false) {
   if (!preview && (!sound || !audio)) return;
   try {
     await unlockAudio();
-    if (audio.state !== "running" || audio.currentTime < soundUntil) return;
+    if (audio.state !== "running") return;
+    if (preview) {
+      for (const osc of soundNodes) osc.stop();
+      soundNodes.clear();
+    } else if (audio.currentTime < soundUntil) return;
     const start = audio.currentTime + 0.02;
-    // A short three-note chime, with a sustained body and soft edges.
-    [660, 880, 1046.5].forEach((frequency, index) => {
+    const preset = soundPresets[soundPreset];
+    let offset = 0;
+    preset.notes.forEach(([frequency, duration]) => {
       const osc = audio.createOscillator(), gain = audio.createGain();
-      const at = start + index * 0.4;
+      const at = start + offset;
+      offset += duration;
+      osc.type = preset.type;
       osc.frequency.value = frequency;
       osc.connect(gain);
       gain.connect(audio.destination);
       const level = 0.4 * (soundVolume / 100);
       gain.gain.setValueAtTime(0, at);
       gain.gain.linearRampToValueAtTime(level, at + 0.02);
-      gain.gain.setValueAtTime(level, at + 0.2);
-      gain.gain.exponentialRampToValueAtTime(0.001, at + 0.38);
+      gain.gain.setValueAtTime(level, at + duration * 0.5);
+      gain.gain.exponentialRampToValueAtTime(0.001, at + duration - 0.02);
+      soundNodes.add(osc);
+      osc.onended = () => { soundNodes.delete(osc); osc.disconnect(); gain.disconnect(); };
       osc.start(at);
-      osc.stop(at + 0.4);
-      osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+      osc.stop(at + duration);
     });
-    soundUntil = start + 1.2;
+    soundUntil = start + offset;
   } catch (error) {
     if (preview) toast("알림음을 재생하지 못했습니다. 브라우저의 소리 허용 설정을 확인해 주세요.");
   }
@@ -116,6 +134,7 @@ document.addEventListener("keydown", () => { unlockAudio().catch(() => {}); });
 function renderSound() {
   $("sound").textContent = sound ? "♪ 알림 켜짐" : "♪ 알림 꺼짐";
   $("sound").setAttribute("aria-pressed", String(sound));
+  $("sound-preset").value = soundPreset;
   $("sound-volume").value = soundVolume;
   $("sound-volume-value").textContent = `${soundVolume}%`;
 }
@@ -128,6 +147,13 @@ $("sound-volume").oninput = (event) => {
   soundVolume = Number(event.target.value);
   localStorage.setItem("soundVolume", String(soundVolume));
   renderSound();
+};
+$("sound-preset").innerHTML = Object.entries(soundPresets)
+  .map(([value, preset]) => `<option value="${value}">${preset.label}</option>`).join("");
+$("sound-preset").onchange = (event) => {
+  soundPreset = event.target.value;
+  localStorage.setItem("soundPreset", soundPreset);
+  beep(true);
 };
 $("sound-test").onclick = () => beep(true);
 renderSound();

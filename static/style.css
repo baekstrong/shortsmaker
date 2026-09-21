@@ -813,3 +813,6 @@ main > header h1 { font-size:22px; margin:3px 0; }
 .sound-settings { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:8px 0; font-size:12px; }
 .sound-settings input { flex:1; min-width:70px; width:90px; }
 .sound-settings button { padding:5px 8px; font-size:12px; }
+
+.sound-choice { display:flex; align-items:center; gap:8px; width:100%; }
+.sound-choice select { flex:1; min-width:0; padding:6px 8px; }
