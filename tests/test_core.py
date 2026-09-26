@@ -448,3 +448,16 @@ def test_split_preserves_hook_and_frames_then_delete_undo(tmp_path):
     assert p['clips'] == []
     p = service.edit(p['id'], dict(action='undo'))
     assert p['clips'][0]['id'] == back['id']
+
+
+@pytest.mark.parametrize("text,valid", [("가" * 15, True), ("가" * 16, False), ("가" * 14 + "?", True), ("가" * 14 + " ?", False)])
+def test_generated_hook_length_limit(tmp_path, monkeypatch, text, valid):
+    from shortsmaker import ai
+    result = dict(hooks=[dict(text=text, yellow_phrase='가')], recommended_text=text)
+    monkeypatch.setattr(ai, 'call', lambda *args, **kwargs: result)
+    p = dict(transcript=[dict(start=0, end=10, text='전사')], model='gpt-6-astra', effort='medium')
+    if valid:
+        assert ai.hooks(None, p, dict(start=0, end=10), tmp_path)['hooks'][0]['text'] == text
+    else:
+        with pytest.raises(ValueError, match='15자'):
+            ai.hooks(None, p, dict(start=0, end=10), tmp_path)
