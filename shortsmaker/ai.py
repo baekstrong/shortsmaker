@@ -69,7 +69,7 @@ FRAME_SCHEMA = obj(
 
 
 def models():
-    result = ["gpt-6-astra"]
+    result = ["gpt-6-astra", "gpt-6.1-sol"]
     path = Path.home() / ".codex/models_cache.json"
     try:
         data = json.loads(path.read_text())

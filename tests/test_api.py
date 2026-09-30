@@ -40,6 +40,7 @@ def test_secrets_are_not_exposed_by_state(client):
     data = client.get("/api/state").json
     assert set(data) == {"projects", "jobs", "models"}
     assert "gpt-6-astra" in data["models"]
+    assert "gpt-6.1-sol" in data["models"]
 
 
 def test_delete_project_hides_list_and_preserves_files(client, tmp_path):
