@@ -5,6 +5,7 @@ import json
 import math
 import re
 import tempfile
+import unicodedata
 from pathlib import Path
 from .store import atomic_json
 from .timeline import transcript_for, validate_cuts
@@ -21,21 +22,33 @@ def obj(properties):
 
 NUMBER = {"type": "number"}
 TEXT = {"type": "string"}
-HOOK_SCHEMA = obj(
+HOOK_CANDIDATE_COUNT = 10
+HOOK_ITEM = obj({"text": TEXT, "yellow_phrase": TEXT, "approach": TEXT})
+HOOK_DRAFT_SCHEMA = obj(
     {
         "audience_problem": TEXT,
         "content_evidence": TEXT,
+        "viewer_expectation": TEXT,
+        "new_insight": TEXT,
         "hooks": {
             "type": "array",
-            "minItems": 10,
-            "maxItems": 10,
-            "items": obj({"text": TEXT, "yellow_phrase": TEXT, "approach": TEXT, "evaluation": TEXT}),
+            "minItems": HOOK_CANDIDATE_COUNT,
+            "maxItems": HOOK_CANDIDATE_COUNT,
+            "items": HOOK_ITEM,
         },
-        "recommended_index": {"type": "integer", "minimum": 0, "maximum": 9},
-        "recommended_text": TEXT,
-        "reason": TEXT,
     }
 )
+HOOK_REVIEW_SCHEMA = obj({
+    "reviews": {"type": "array", "minItems": HOOK_CANDIDATE_COUNT, "maxItems": HOOK_CANDIDATE_COUNT, "items": obj({
+        "index": {"type": "integer", "minimum": 0, "maximum": HOOK_CANDIDATE_COUNT - 1},
+        "passes": {"type": "boolean"},
+        "reason": TEXT,
+        "weakness": TEXT,
+    })},
+    "selected_indices": {"type": "array", "minItems": 0, "maxItems": HOOK_CANDIDATE_COUNT,
+                         "items": {"type": "integer", "minimum": 0, "maximum": HOOK_CANDIDATE_COUNT - 1}},
+    "reason": TEXT,
+})
 SPLIT_SCHEMA = obj(
     {
         "clips": {
@@ -196,6 +209,7 @@ def split(ctx, project, cache_dir):
 첫 발언부터 무슨 이야기인지 알 수 있게 고르세요. 앞 쇼츠를 봐야 이해되는 짧은 조각을 억지로 만들지 마세요.
 선정된 범위 안의 반복 설명·곁가지는 다음 내용 편집 단계에서 삭제합니다. 주제를 고르는 것만으로 편집이 끝난다고 생각하지 마세요.
 전사 문장의 시작/끝 및 발화 사이 여백을 참고하고 말꼬리를 보존하세요. 제목과 선정 이유, 전체 요약도 한국어로.
+summary에는 원본의 핵심 시청 대상·문제 또는 사용 목적과 선정한 쇼츠들의 흐름을 남기세요. 뒤의 보조 운동이 어떤 문제를 위해 쓰이는지 맥락이 사라지지 않게 하세요.
 전사 데이터:\n{json.dumps(transcript,ensure_ascii=False)}"""
     result = call(
         ctx, prompt, SPLIT_SCHEMA, cache_dir, project["model"], project["effort"]
@@ -257,52 +271,137 @@ summary에는 무엇을 남기고 무엇을 덜어냈는지 한국어로 짧게 
     return result
 
 
-def hooks(ctx, project, clip, cache_dir, fresh=False):
-    transcript = transcript_for(project, clip)
-    text = " ".join(s["text"] for s in transcript)
-    if not text:
-        raise ValueError("이 구간에 전사 내용이 없습니다. 먼저 영상을 분석해 주세요.")
-    opening_parts, remaining = [], 8
-    for s in transcript:
-        if remaining <= 0:
-            break
-        opening_parts.append(s["text"])
-        remaining -= s["end"] - s["start"]
-    opening = " ".join(opening_parts)
-    prompt = f"""한국어 운동 쇼츠의 상단 후킹 문구를 설계하세요.
-목적은 시청자의 관심을 붙잡아 영상을 보고 싶게 만드는 '후킹'입니다. 단순한 내용 요약이나 주제 설명은 안 됩니다.
-문구 정확히 10개를 자유롭게 만드세요. 질문형 비율, 문장 유형, 접근 방식, 예시 문구에 맞출 필요가 없습니다.
-각 text는 공백·문장부호·줄바꿈을 포함해 15자 이내입니다. 반환 전에 글자 수를 확인하세요.
-영상 내용을 바탕으로 쓰고, 영상에 없는 사실을 지어내지는 마세요.
-audience_problem에는 관심을 끌 지점, content_evidence에는 관련 영상 근거를 짧게 적으세요.
-각 approach와 evaluation에는 표현 의도와 요약이 아닌 후킹으로 작동하는 이유를 짧게 적으세요.
-가장 보고 싶게 만드는 후보 하나를 recommended_index(0~9)로 추천하고 reason에 이유를 쓰세요.
-recommended_text에는 선택한 text를 그대로 복사하세요.
-각 yellow_phrase는 text 안에 그대로 포함된 비어 있지 않은 연속 구절입니다.
-클립 주제: {clip.get('title','')}
-첫8초 발언: {opening}
-내용 데이터: {text}"""
-    result = call(
-        ctx,
-        prompt,
-        HOOK_SCHEMA,
-        cache_dir,
-        project["model"],
-        project["effort"],
-        fresh=fresh,
-    )
-    if any(not h["text"].strip() or len(h["text"]) > 15 for h in result["hooks"]):
-        raise ValueError("AI 후킹 문구는 공백·문장부호 포함 15자 이내여야 합니다. 다시 생성해 주세요.")
+def validate_hook_candidates(hooks):
+    if any(not isinstance(h.get("text"), str) or not h["text"].strip()
+           or h["text"] != h["text"].strip() or len(h["text"]) > 15
+           or len(h["text"].splitlines()) > 2 for h in hooks):
+        raise ValueError("AI 후킹 문구는 공백·문장부호 포함 15자 이내, 최대 두 줄이어야 합니다.")
+    if len({h["text"] for h in hooks}) != len(hooks):
+        raise ValueError("같은 후킹 후보가 반복되었습니다. 서로 다른 문구를 생성해 주세요.")
+    if any(not h.get("yellow_phrase") or h["yellow_phrase"] not in h["text"] for h in hooks):
+        raise ValueError("AI 강조 구절이 문구와 일치하지 않습니다. 후킹을 다시 생성해 주세요.")
+
+
+def validate_hook_review(review, count, require_ten=True):
+    decisions = review["reviews"]
+    indexes = [r["index"] for r in decisions]
+    if (len(indexes) != count or any(not isinstance(i, int) or isinstance(i, bool) for i in indexes)
+            or set(indexes) != set(range(count))):
+        raise ValueError("후킹 검수 결과에 누락 또는 중복 후보가 있습니다.")
+    if not review["reason"].strip() or any(not isinstance(r["passes"], bool) or not r["reason"].strip() or not r["weakness"].strip()
+           for r in decisions):
+        raise ValueError("후킹의 통과 여부와 검수 근거를 확인해 주세요.")
+    selected = review["selected_indices"]
+    passed = {r["index"] for r in decisions if r["passes"]}
+    if (any(not isinstance(i, int) or isinstance(i, bool) or i not in passed for i in selected)
+            or len(set(selected)) != len(selected) or set(selected) != passed
+            or len(selected) > HOOK_CANDIDATE_COUNT):
+        raise ValueError("탈락하거나 중복된 후보가 최종 후킹에 포함되었습니다.")
+    if require_ten and len(selected) != HOOK_CANDIDATE_COUNT:
+        raise ValueError(f"독립 검수를 통과한 후킹이 {len(selected)}개뿐입니다. 약한 후보를 다시 작성해 주세요.")
+    return selected
+
+
+def validate_hooks(result):
+    validate_hook_candidates(result["hooks"])
     selected = [i for i, h in enumerate(result["hooks"]) if h["text"] == result["recommended_text"]]
     if len(selected) != 1:
         raise ValueError("AI 추천 문구가 후보와 일치하지 않습니다. 다시 생성해 주세요.")
     result["recommended_index"] = selected[0]
-    if any(
-        not h["yellow_phrase"]
-        or h["yellow_phrase"] not in h["text"]
-        for h in result["hooks"]
-    ):
-        raise ValueError(
-            "AI 강조 구절이 문구와 일치하지 않습니다. 후킹을 다시 생성해 주세요."
-        )
     return result
+
+
+def hooks(ctx, project, clip, cache_dir, fresh=False, images=()):
+    transcript = transcript_for(project, clip)
+    text = " ".join(s["text"] for s in transcript)
+    if not text:
+        raise ValueError("이 구간에 전사 내용이 없습니다. 먼저 영상을 분석해 주세요.")
+    opening = " ".join(s["text"] for s in transcript_for(project, clip, limit=8))
+    first = " ".join(s["text"] for s in transcript_for(project, clip, limit=3))
+    siblings = [c.get("title", "") for c in project.get("clips", []) if c["id"] != clip.get("id")]
+    evidence = f"""원본 주제명: {unicodedata.normalize('NFC', project.get('name', ''))}
+원본 흐름 요약(시청 대상·이 클립의 사용 목적을 파악하는 보조 맥락): {project.get('summary', '')}
+클립 주제: {clip.get('title', '')}
+현재 문구(개선 전): {clip.get('hook', '')}
+같은 원본의 다른 쇼츠 주제(공통 대상·이 클립의 역할 파악에만 참고): {json.dumps(siblings, ensure_ascii=False)}
+실제 첫3초 발언: {first}
+첫8초 발언: {opening}
+삭제 후 남은 내용: {text}
+첨부는 삭제 후 첫8초 안의 원본 화면입니다. EDITED는 편집 후 시각, SOURCE는 원본 시각입니다.
+화면은 의도된 크롭 전 원본이므로 글이나 몸 전체가 완성 화면에서 보일 것이라 가정하지 마세요.
+원본 맥락은 시청 대상·교정 목적을 잃지 않기 위한 정보입니다. 다른 쇼츠의 설명이나 삭제한 발언을 이 쇼츠에서 답해 주겠다고 약속하지 마세요."""
+    rules = """핵심 시청자는 원본의 주요 문제를 겪으며 방법을 찾는 사람입니다. 클립에 등장하는 교정 운동의 이름·전문용어를 이미 안다고 가정하지 마세요. 시청자가 실제 겪는 문제·답답함·오해와 이 영상에서 얻을 구체적인 단서를 연결하세요.
+이 클립이 원래 문제를 해결하기 위한 보조 운동이라면 그 운동의 사용 목적을 유지하세요. 시청 대상을 임의로 그 운동 이름을 이미 알고 배우려는 사람으로 좁히지 마세요. 원래 문제를 겪는 사람이 왜 이 시범을 봐야 하는지 문구에서 이해할 수 있어야 합니다.
+문구만 보아도 상황/대상/동작을 이해할 수 있어야 합니다. 15자로 줄이면서 문제와 맥락까지 숨기지 마세요. 답이나 방법을 궁금하게 남기되 무엇이 궁금한지는 분명해야 합니다.
+실제 내용의 의외의 연결·예상과 다른 선택·확인할 단서·얻을 변화를 찾으세요. 익숙한 사실에 물음표를 붙이거나 운동 이름/방법을 소개하는 것만으로 끝내지 마세요.
+전문용어를 몰라도 뜻이 통하고 실제 사람들이 쓰는 자연스러운 한국어여야 합니다. 약한 말장난, 자극이 세다는 말만 남긴 표현, 뜻 없는 지시어·숫자·미완성 문구를 피하세요.
+문구를 따라 했을 때 다른 동작을 하게 만드는 오해가 없어야 합니다. 교정 운동의 조건을 스쿼트 자세 지시로 바꾸지 마세요. 운동 전체에 적용되는 규칙이나 효과 보장으로 확대하지 마세요.
+근거는 이 쇼츠의 남은 발언과 화면입니다. 체험·통계·통증·원인 단정·결과 보장·내용에 없는 반박을 지어내지 마세요. 보지 않아도 답이 끝나는 단순 요약은 제외하세요.
+첫 발언과 첫 화면을 보고 연결이 성립하는지 확인하세요. 초반 연결이 약하거나 답이 늦게 나오는 후보는 그 약점을 평가에 반영하세요.
+질문형 비율, 문장 유형, 접근 개수, 고정 문구 양식을 강제하지 않습니다. 모든 후보에 같은 운동명을 붙일 필요도 없습니다.
+공백·문장부호·줄바꿈 포함15자 이내, 최대 두 줄입니다. 글자 수와 문장 자연스러움을 마지막에 확인하세요."""
+    prompt = f"""한국어 운동 쇼츠의 상단 후킹 후보를 자유롭게 설계하세요. 후킹 편집 기준 버전4.
+{rules}
+먼저 audience_problem에 실제 시청자의 상황·문제를, viewer_expectation에 그 사람이 예상하는 원인/해법을, new_insight에 영상이 제공하는 새 단서/관점을, content_evidence에 이를 뒷받침하는 실제 발언을 짧게 적으세요. 영상에 없는 예상은 사실로 쓰지 마세요.
+그 분석을 바탕으로 서로 다른 후보10개를 쓰세요. 현재 문구가 약하면 시청 이유가 더 선명한 표현을 찾으세요. 현재 문구도 기준을 충족하면 후보 하나로 포함해 비교할 수 있습니다. 같은 실제 단서를 자연스러운 여러 표현으로 전달해도 됩니다. 서로 다른 사실이나 유형10개를 억지로 만들지 마세요. 어미만 바꾸거나 똑같은 문구를 중복시키지는 마세요.
+각 approach에는 표현 의도만 쓰고 본인이 만든 문구의 우수함을 평가하거나 추천하지 마세요. 선별은 별도 편집자가 합니다.
+yellow_phrase는 text에 그대로 포함된 비어 있지 않은 연속 구절입니다.
+{evidence}"""
+    feedback = ""
+    retained = {}
+    for attempt in range(2):
+        review = None
+        draft = call(ctx, prompt + feedback, HOOK_DRAFT_SCHEMA, cache_dir,
+                     project["model"], project["effort"], fresh=fresh, images=images)
+        try:
+            if len(draft["hooks"]) != HOOK_CANDIDATE_COUNT:
+                raise ValueError("검수할 후킹 후보10개를 생성해 주세요.")
+            for index, candidate in retained.items():
+                draft["hooks"][index] = candidate
+            validate_hook_candidates(draft["hooks"])
+            candidates = [dict(index=i, text=h["text"]) for i, h in enumerate(draft["hooks"])]
+            review_prompt = f"""처음 보는 시청자의 입장에서 후킹10개를 엄격히 검수하는 독립 편집자입니다. 후킹 편집 기준 버전4.
+작성자의 표현 의도·평가·추천은 제공되지 않았습니다. 문구 자체와 원본 근거로 판단하세요. 후보 순서에 우열은 없습니다.
+{rules}
+약한 문구를 그럴듯하게 정당화하지 마세요. 모든 후보의 장점을 찾는 것이 아니라 이해/시청 이유/내용 일치/실행 오해를 확인하고 부족하면 탈락시키는 작업입니다.
+후보마다 index와 passes, 구체적인 reason 및 weakness를 각각 짧은 한 문장으로 적으세요. 약점이 없다면 weakness에 '큰 약점 없음'을 적되 설명/맥락/전문용어 문제를 다시 확인하세요.
+전체10개를 빠짐없이 한 번씩 검수하세요. 표현을 새로 쓰거나 고치지 마세요.
+selected_indices에는 통과한 후보의 index를 좋은 순서대로 적으세요. 10개가 안 되면 통과한 수만 반환하세요. 개수를 채우려고 기준을 낮추지 마세요. 같은 사실을 다른 자연스러운 표현으로 전달하는 것은 탈락 이유가 아닙니다.
+첫 후보가 최우선 추천입니다. reason에는 최우선 후보가 다른 후보보다 왜 볼 이유를 더 선명하게 만드는지와 남는 약점을 짧게 적으세요. 조회수나 시청 유지 성과를 보장하지 마세요.
+{evidence}
+후보 문구: {json.dumps(candidates, ensure_ascii=False)}"""
+            review = call(ctx, review_prompt, HOOK_REVIEW_SCHEMA, cache_dir,
+                          project["model"], project["effort"], fresh=fresh, images=images)
+            selected = validate_hook_review(review, len(candidates), require_ten=not attempt)
+            if not selected:
+                raise ValueError("독립 검수를 통과한 후킹이 없습니다. 기존 문구를 보존합니다.")
+        except ValueError as exc:
+            if attempt:
+                raise
+            decisions = {}
+            if review is not None:
+                try:
+                    validate_hook_review(review, len(draft["hooks"]), require_ten=False)
+                    decisions = {r["index"]: r for r in review["reviews"]}
+                except ValueError:
+                    pass
+            retained = {i: dict(h) for i, h in enumerate(draft["hooks"])
+                        if decisions.get(i, {}).get("passes")}
+            repairs = [dict(index=i, text=h.get("text", ""), yellow_phrase=h.get("yellow_phrase", ""),
+                            keep=i in retained,
+                            feedback="통과한 원문과 강조 유지" if i in retained else
+                            decisions.get(i, {}).get("weakness", str(exc)))
+                       for i, h in enumerate(draft["hooks"])]
+            feedback = ("\n이전 결과 오류: " + str(exc)
+                        + "\n이전 후보와 보완 지시: " + json.dumps(repairs, ensure_ascii=False)
+                        + "\nkeep=true 후보는 같은 index에 원문과 강조를 유지하세요. keep=false 후보만 보완해 전체10개를 반환하세요. 다시 독립 검수합니다.")
+            continue
+        decisions = {r["index"]: r for r in review["reviews"]}
+        hooks = [dict(draft["hooks"][i], evaluation=decisions[i]["reason"] + " · 약점: " + decisions[i]["weakness"])
+                 for i in selected]
+        result = {k: draft[k] for k in ("audience_problem", "content_evidence", "viewer_expectation", "new_insight")}
+        result.update(hooks=hooks, recommended_index=0, recommended_text=hooks[0]["text"],
+                      reason=review["reason"], review=dict(draft=draft, **review))
+        if len(hooks) < HOOK_CANDIDATE_COUNT:
+            result["reason"] += f" 검수를 통과한 {len(hooks)}개만 제안합니다."
+        return validate_hooks(result)

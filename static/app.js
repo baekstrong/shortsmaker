@@ -352,7 +352,7 @@ function renderEditor() {
     ? "✓ 문구 확정됨"
     : "이 문구로 확정";
   $("recommendation").textContent =
-    c.recommendation_reason || "AI가 10개 후보 중 가장 좋은 문구를 추천합니다.";
+    c.recommendation_reason || "AI가 검수한 후보 중 가장 좋은 문구를 추천합니다.";
   $("hooks").innerHTML = c.hooks
     .map(
       (h, i) =>

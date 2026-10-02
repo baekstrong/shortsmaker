@@ -306,27 +306,28 @@ def test_hook_refresh_preserves_confirmed_until_explicit_replacement(tmp_path, m
     store.change(p['id'],lambda p:p.update(clips=[c]))
     result=dict(hooks=[dict(text='새 문구',yellow_phrase='새',approach='문제 인식',evaluation='내용과 일치')]*10,
                 recommended_index=0,reason='비교 이유',audience_problem='상황',content_evidence='근거')
-    monkeypatch.setattr(ai,'hooks',lambda *args:result)
+    monkeypatch.setattr(ai,'hooks',lambda *args, **kwargs:result)
+    monkeypatch.setattr(service, 'source', lambda p: None)
+    from shortsmaker import editing
+    monkeypatch.setattr(editing, 'hook_images', lambda *args: ['opening.jpg'])
     ctx=SimpleNamespace(progress=lambda *args:None, check=lambda:None, abort_parallel=lambda:None)
     service.hooks(ctx,p['id'],{})
     assert store.load(p['id'])['clips'][0]['hook']=='기존 문구'
     service.hooks(ctx,p['id'],dict(replace_selected=True))
     c=store.load(p['id'])['clips'][0]
-    assert c['hook']=='새 문구' and not c['confirmed'] and c['hook_version']==3
+    assert c['hook']=='새 문구' and not c['confirmed'] and c['hook_version']==4
     assert c['hook_analysis']['content_evidence']=='근거'
     p=service.edit(p['id'],dict(action='undo'))
     assert p['clips'][0]['hook']=='기존 문구' and p['clips'][0]['confirmed']
 
 
-def test_hook_selection_uses_exact_text_not_inconsistent_index(tmp_path, monkeypatch):
+def test_hook_selection_uses_exact_text_not_inconsistent_index():
     from shortsmaker import ai
     result=dict(hooks=[dict(text=f'후보 {i}',yellow_phrase='후보') for i in range(10)],
                 recommended_index=2,recommended_text='후보 1',reason='선택 이유')
-    monkeypatch.setattr(ai,'call',lambda *args,**kwargs:result)
-    p=dict(transcript=[dict(start=0,end=10,text='전사')],model='gpt-6-astra',effort='medium')
-    assert ai.hooks(None,p,dict(start=0,end=10),tmp_path)['recommended_index']==1
+    assert ai.validate_hooks(result)['recommended_index']==1
     result['recommended_text']='후보에 없는 문구'
-    with pytest.raises(ValueError):ai.hooks(None,p,dict(start=0,end=10),tmp_path)
+    with pytest.raises(ValueError):ai.validate_hooks(result)
 
 
 def test_region_time_edit_preserves_position_and_controls_render_interval(tmp_path):
@@ -451,13 +452,11 @@ def test_split_preserves_hook_and_frames_then_delete_undo(tmp_path):
 
 
 @pytest.mark.parametrize("text,valid", [("가" * 15, True), ("가" * 16, False), ("가" * 14 + "?", True), ("가" * 14 + " ?", False)])
-def test_generated_hook_length_limit(tmp_path, monkeypatch, text, valid):
+def test_generated_hook_length_limit(text, valid):
     from shortsmaker import ai
     result = dict(hooks=[dict(text=text, yellow_phrase='가')], recommended_text=text)
-    monkeypatch.setattr(ai, 'call', lambda *args, **kwargs: result)
-    p = dict(transcript=[dict(start=0, end=10, text='전사')], model='gpt-6-astra', effort='medium')
     if valid:
-        assert ai.hooks(None, p, dict(start=0, end=10), tmp_path)['hooks'][0]['text'] == text
+        assert ai.validate_hooks(result)['hooks'][0]['text'] == text
     else:
         with pytest.raises(ValueError, match='15자'):
-            ai.hooks(None, p, dict(start=0, end=10), tmp_path)
+            ai.validate_hooks(result)

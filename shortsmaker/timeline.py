@@ -44,9 +44,16 @@ def trim_cuts(clip):
                     if c["end"] > clip["start"] and c["start"] < clip["end"]]
 
 
-def transcript_for(project, clip):
+def transcript_for(project, clip, limit=None):
     result = []
+    remaining = limit
     for r in kept_ranges(clip):
+        if remaining is not None:
+            if remaining <= 0:
+                break
+            end = min(r["end"], r["start"] + remaining)
+            remaining -= end - r["start"]
+            r = dict(r, end=end)
         for s in project["transcript"]:
             if s["end"] <= r["start"] or s["start"] >= r["end"]:
                 continue

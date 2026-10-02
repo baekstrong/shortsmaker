@@ -235,34 +235,44 @@ class Service:
         self.store.change(pid, save, revision=p["revision"], history=True)
 
     def hooks(self, ctx, pid, args):
+        from .editing import hook_images
         p = self.store.load(pid)
+        self.source(p)
         clips = self.selected(p, args)
 
         def generate(clip):
+            images = hook_images(ctx, p["source"], clip,
+                                 self.store.folder(pid) / "hook-review" / clip["id"])
             return ai.hooks(
                 ctx, p, clip, self.store.folder(pid) / "ai-cache", args.get("fresh", False),
+                images=images,
             )
 
-        ctx.progress(f"후킹 후보 생성 · 0/{len(clips)} 완료 · 최대 2개 동시 분석", 0)
+        collected = []
+        ctx.progress(f"후킹 생성·독립 검수 · 0/{len(clips)} 완료 · 최대 2개 동시 분석", 0)
         with parallel_tasks(ctx, generate, clips) as results:
             for i, (clip, result) in enumerate(results, 1):
-                def save(project):
-                    c = next(c for c in project["clips"] if c["id"] == clip["id"])
-                    c.update(
-                        hooks=result["hooks"],
-                        recommended_index=result["recommended_index"],
-                        recommendation_reason=result["reason"],
-                        hook_analysis={k: result.get(k, "") for k in ("audience_problem", "content_evidence")},
-                        hook_version=3,
-                    )
-                    if not c["confirmed"] or args.get("replace_selected", False):
-                        recommended = result["hooks"][result["recommended_index"]]
-                        c.update(
-                            hook=recommended["text"], yellow=recommended["yellow_phrase"], confirmed=False
-                        )
+                collected.append((clip["id"], result))
+                ctx.progress(f"후킹 생성·독립 검수 · {i}/{len(clips)} 완료", i * 100 / len(clips))
+        ctx.check()
 
-                self.store.change(pid, save, history=True)
-                ctx.progress(f"후킹 후보 생성 · {i}/{len(clips)} 완료", i * 100 / len(clips))
+        def save(project):
+            for cid, result in collected:
+                c = next(c for c in project["clips"] if c["id"] == cid)
+                c.update(
+                    hooks=result["hooks"],
+                    recommended_index=result["recommended_index"],
+                    recommendation_reason=result["reason"],
+                    hook_analysis={k: result.get(k, "") for k in
+                                   ("audience_problem", "content_evidence", "viewer_expectation", "new_insight")},
+                    hook_review=result.get("review", {}),
+                    hook_version=4,
+                )
+                if not c["confirmed"] or args.get("replace_selected", False):
+                    recommended = result["hooks"][result["recommended_index"]]
+                    c.update(hook=recommended["text"], yellow=recommended["yellow_phrase"], confirmed=False)
+                validate_clip(c, project["metadata"]["duration"])
+        self.store.change(pid, save, revision=p["revision"], history=True)
 
     def framing(self, ctx, pid, args):
         from . import framing

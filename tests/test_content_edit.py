@@ -39,10 +39,14 @@ def test_hook_prompt_uses_only_kept_words_and_actual_opening(tmp_path, monkeypat
             dict(start=0,end=2,text='홍보'),dict(start=2,end=3,text='핵심'),dict(start=3,end=4,text='설명')])])
     c = dict(start=0,end=4,cuts=[dict(start=0,end=2,reason='홍보')])
     assert transcript_for(p,c) == [dict(start=2,end=4,text='핵심 설명')]
-    def call(ctx, prompt, *args, **kwargs):
+    def call(ctx, prompt, schema, *args, **kwargs):
         assert '홍보' not in prompt
         assert '첫8초 발언: 핵심 설명' in prompt
-        return dict(hooks=[dict(text='왜 힘들까',yellow_phrase='힘들')],recommended_text='왜 힘들까')
+        if schema is ai.HOOK_DRAFT_SCHEMA:
+            return dict(hooks=[dict(text=f'후보{i}', yellow_phrase='후보', approach='표현 의도') for i in range(10)],
+                        audience_problem='문제', content_evidence='설명', viewer_expectation='기대', new_insight='단서')
+        return dict(reviews=[dict(index=i, passes=True, reason='근거 일치', weakness='초반 연결') for i in range(10)],
+                    selected_indices=list(range(10)), reason='비교 추천')
     monkeypatch.setattr(ai,'call',call)
     ai.hooks(None,p,c,tmp_path)
 
