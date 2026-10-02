@@ -78,6 +78,24 @@ function time(t) {
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 }
 const savedVolume = Number(localStorage.getItem("soundVolume") ?? 80);
+function keptRanges(c) {
+  let cursor = c.start;
+  const ranges = [];
+  for (const cut of c.cuts || []) {
+    if (cut.start > cursor) ranges.push({ start: cursor, end: cut.start });
+    cursor = cut.end;
+  }
+  if (cursor < c.end) ranges.push({ start: cursor, end: c.end });
+  return ranges;
+}
+const editedDuration = (c) => keptRanges(c).reduce((total, r) => total + r.end-r.start, 0);
+const editedAt = (c, at) => keptRanges(c).reduce((total, r) => total + Math.max(0, Math.min(at, r.end)-r.start), 0);
+function playbackStart(c, at) {
+  const ranges = keptRanges(c);
+  if (at < c.start || at >= ranges.at(-1).end) return ranges[0].start;
+  const next = ranges.find(r => at < r.end);
+  return Math.max(at, next.start);
+}
 let soundVolume = Number.isFinite(savedVolume) ? Math.max(10, Math.min(100, savedVolume)) : 80;
 const soundPresets = {
   chime: { label: "맑은 3음", type: "sine", notes: [[660, 0.14], [880, 0.14], [1046.5, 0.18]] },
@@ -275,7 +293,7 @@ function render() {
   $("clips").innerHTML = p.clips
     .map(
       (c, i) =>
-        `<article tabindex="0" role="button" data-clip="${c.id}" class="clip-card ${c.id === cid ? "active" : ""} ${!c.included ? "excluded" : ""}"><div class="row"><span class="badge">SHORT ${String(i + 1).padStart(2, "0")}</span><input type="checkbox" data-include="${c.id}" ${c.included ? "checked" : ""} aria-label="${i + 1}번 쇼츠 작업에 포함" ${busy() ? "disabled" : ""}></div><h3>${esc(c.title)}</h3><small>${time(c.start)} – ${time(c.end)} · ${(c.end - c.start).toFixed(1)}초</small><div><small class="${c.end - c.start > 180 ? "warning" : ""}">${c.end - c.start > 180 ? "3분 초과 · 추가 분할 필요" : c.confirmed ? "✓ 문구 확정" : "문구 확인 대기"}${c.frame_suggestions?.length ? ` · 설명 화면 ${c.frame_suggestions.length}곳` : ""}</small></div></article>`,
+        `<article tabindex="0" role="button" data-clip="${c.id}" class="clip-card ${c.id === cid ? "active" : ""} ${!c.included ? "excluded" : ""}"><div class="row"><span class="badge">SHORT ${String(i + 1).padStart(2, "0")}</span><input type="checkbox" data-include="${c.id}" ${c.included ? "checked" : ""} aria-label="${i + 1}번 쇼츠 작업에 포함" ${busy() ? "disabled" : ""}></div><h3>${esc(c.title)}</h3><small>${time(c.start)} – ${time(c.end)} · ${editedDuration(c).toFixed(1)}초${c.cuts?.length ? ` · ${c.cuts.length}곳 삭제, ${(c.end-c.start-editedDuration(c)).toFixed(1)}초 단축` : ""}</small><div><small class="${editedDuration(c) > 180 ? "warning" : ""}">${editedDuration(c) > 180 ? "3분 초과 · 추가 분할 필요" : c.confirmed ? "✓ 문구 확정" : "문구 확인 대기"}${c.frame_suggestions?.length ? ` · 설명 화면 ${c.frame_suggestions.length}곳` : ""}</small></div></article>`,
     )
     .join("");
   // Jobs are newest first; a resumed job replaces the previous status card.
@@ -294,7 +312,7 @@ function render() {
     videoProject = pid;
     $("video").src = `/api/projects/${pid}/source`;
     $("video").onloadedmetadata = () => {
-      if (clip()) $("video").currentTime = clip().start;
+      if (clip()) $("video").currentTime = keptRanges(clip())[0].start;
       updatePreview();
     };
   }
@@ -319,10 +337,13 @@ function renderEditor() {
     v.readyState > 0 &&
     (v.currentTime < c.start || v.currentTime > c.end)
   )
-    v.currentTime = c.start;
+    v.currentTime = keptRanges(c)[0].start;
   fieldValue("clip-title", c.title);
   fieldValue("start", c.start);
   fieldValue("end", c.end);
+  $("content-edit-summary").textContent = c.content_edit_summary || "AI 컷 편집으로 반복 설명·전환 멘트·화면 조정 과정을 덜어내세요.";
+  $("content-cuts").innerHTML = (c.cuts || []).map((cut, i) => `<div class="content-cut"><div><strong>원본 ${cut.start.toFixed(2)} ~ ${cut.end.toFixed(2)}초 삭제</strong><p>${esc(cut.reason)}</p></div><button data-restore-cut="${i}" class="quiet">복원</button></div>`).join("");
+  for (const id of ["cut-start", "cut-end"]) { $(id).min = c.start; $(id).max = c.end; }
   const draft = titleDrafts.get(`${pid}/${cid}`);
   fieldValue("hook", draft?.changes.hook ?? c.hook);
   fieldValue("yellow", draft?.changes.yellow ?? c.yellow);
@@ -350,10 +371,10 @@ function renderEditor() {
       const applied = c.frame_overrides?.find(f => f.id === s.id);
       return `<div data-region-id="${esc(s.id)}" class="frame-suggestion ${editingRegion()?.id === s.id ? "selected" : ""}">
         <button class="information-inspect" data-inspect="${i}">${s.thumbnail ? `<img src="/api/projects/${pid}/clips/${c.id}/information/${s.id}.jpg?v=${project().revision}" alt="설명 자료가 등장하는 원본 화면" loading="lazy">` : ""}
-        <strong>${esc(s.subject || "설명 자료")}</strong><span>이 쇼츠 ${time(s.start-c.start)} ~ ${time(s.end-c.start)}</span><small>원본 ${time(s.start)} ~ ${time(s.end)}</small></button>
+        <strong>${esc(s.subject || "설명 자료")}</strong><span>소재 내 ${time(s.start-c.start)} ~ ${time(s.end-c.start)}</span><small>원본 ${time(s.start)} ~ ${time(s.end)}</small></button>
         <p>${esc(s.reason)}</p><small>추천: ${esc(s.direction)} · ${Math.round(s.zoom*100)}%${s.confidence < .8 ? " · 확인 필요" : ""}</small>
         <div class="region-time-editor">
-          <small>위치 적용 시간 · 이 쇼츠 시작부터 초 단위</small>
+          <small>위치 적용 시간 · 소재 시작부터 초 단위</small>
           <div class="row">
             <label>적용 시작 (초)<input data-region-start type="number" min="0" max="${Number((c.end-c.start).toFixed(3))}" step="0.001" value="${Number((s.start-c.start).toFixed(3))}"></label>
             <label>적용 끝 (초)<input data-region-end type="number" min="0" max="${Number((c.end-c.start).toFixed(3))}" step="0.001" value="${Number((s.end-c.start).toFixed(3))}"></label>
@@ -566,11 +587,11 @@ function updatePreview() {
   $("seek").max = c.end;
   $("seek").value = Math.max(c.start, Math.min(c.end, t));
   $("time").textContent =
-    `${time(Math.max(0, t - c.start))} / ${time(c.end - c.start)}`;
+    `${time(editedAt(c, t))} / ${time(editedDuration(c))} · 원본 ${time(t)}`;
   $("frame-info").textContent =
     `${Math.round(z * 100)}% · ${previewOverrides().some(f => t >= f.start && t < f.end) ? "이 설명 구간에 적용된 위치" : c.manual_frame ? "전체 기본 위치" : "중앙 고정"}`;
   const region = editingRegion();
-  $("frame-scope").textContent = region ? `지금 조정하면 ${time(region.start-c.start)} ~ ${time(region.end-c.start)} 구간에만 적용` : "지금 조정하면 쇼츠 전체의 기본 위치에 적용";
+  $("frame-scope").textContent = region ? `지금 조정하면 ${time(region.start-c.start)} ~ ${time(region.end-c.start)} 소재 구간에만 적용` : "지금 조정하면 쇼츠 전체의 기본 위치에 적용";
   $("whole-frame").hidden = !region;
   $("reset-frame").textContent = region ? "이 설명 구간을 기본 위치로" : "150% · 중앙 기본값으로";
   const controls = editingFrame();
@@ -676,7 +697,7 @@ $("clips").onclick = safe(async (e) => {
     trimDraft = null;
     cid = card.dataset.clip;
     shownRevision = -1;
-    $("video").currentTime = clip().start;
+    $("video").currentTime = keptRanges(clip())[0].start;
     render();
   }
 });
@@ -705,7 +726,7 @@ for (const button of document.querySelectorAll("[data-stage]"))
       )
     )
       return;
-    await run(kind);
+    await run(kind, kind === "content_edit" ? { fresh: true } : {});
   });
 for (const id of ["new-project", "empty-import"])
   $(id).onclick = () => $("import-dialog").showModal();
@@ -1012,15 +1033,31 @@ $("play").onclick = safe(async () => {
   if (!c) return;
   if (v.paused) {
     if (v.currentTime < c.start || v.currentTime >= c.end)
-      v.currentTime = c.start;
+      v.currentTime = keptRanges(c)[0].start;
+    v.currentTime = playbackStart(c, v.currentTime);
     await v.play();
   } else v.pause();
 });
-$("video").onplay = () => ($("play").textContent = "Ⅱ");
+let playbackFrame = null;
+function checkPlayback() {
+  const c = clip(), v = $("video");
+  if (!c || v.paused || v.seeking) return;
+  const ranges = keptRanges(c), next = ranges.find(r => v.currentTime < r.end);
+  if (!next) { v.pause(); return; }
+  if (v.currentTime < next.start) v.currentTime = next.start;
+}
+function watchPlayback() {
+  checkPlayback();
+  if (!$("video").paused) playbackFrame = requestAnimationFrame(watchPlayback);
+}
+$("video").onplay = () => {
+  $("play").textContent = "Ⅱ";
+  cancelAnimationFrame(playbackFrame);
+  watchPlayback();
+};
 $("video").onpause = () => ($("play").textContent = "▶");
 $("video").ontimeupdate = () => {
-  if (clip() && $("video").currentTime >= clip().end && !$("video").paused)
-    $("video").pause();
+  checkPlayback();
   updatePreview();
 };
 $("seek").oninput = () => {
@@ -1028,6 +1065,19 @@ $("seek").oninput = () => {
   updatePreview();
 };
 new ResizeObserver(updatePreview).observe($("preview"));
+$("edit-content").onclick = safe(() => run("content_edit", { clip_ids: [cid], fresh: true }));
+$("content-cuts").onclick = safe(async (event) => {
+  const button = event.target.closest("[data-restore-cut]");
+  if (button) await edit("restore_cut", { index: Number(button.dataset.restoreCut) });
+});
+for (const edge of ["start", "end"]) $("cut-" + edge + "-now").onclick = () => {
+  $("cut-" + edge).value = $("video").currentTime.toFixed(3);
+};
+$("cut-range").onclick = safe(async () => {
+  const start = $("cut-start"), end = $("cut-end");
+  if (!start.value || !end.value || !start.reportValidity() || !end.reportValidity()) throw Error("삭제할 원본 시작·끝 시간을 입력해 주세요.");
+  await edit("cut", { start: Number(start.value), end: Number(end.value) });
+});
 $("download").onclick = safe(async () => {
   if (!clip()?.render) throw Error("먼저 인코딩을 완료해 주세요.");
   window.open(`/api/projects/${pid}/clips/${cid}/output`, "_blank");

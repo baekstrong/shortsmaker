@@ -11,6 +11,7 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
+from .timeline import kept_ranges, clip_duration, validate_cuts
 
 WIDTH, HEIGHT = 1080, 1920
 FONT_CANDIDATES = [
@@ -208,7 +209,7 @@ def title_image(text, yellow, path, font_size=80):
 
 def render_key(project, clip):
     payload = {
-        "version": 6,
+        "version": 7,
         "font": font_key(),
         "source": project["metadata"],
         "path": project["source"],
@@ -228,6 +229,7 @@ def render_key(project, clip):
         },
     }
     payload["clip"]["frame_overrides"] = clip.get("frame_overrides", [])
+    payload["clip"]["cuts"] = clip.get("cuts", [])
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()[:20]
@@ -247,7 +249,9 @@ def scenes_for(clip):
         cursor = end
     if cursor < clip["end"]:
         result.append(dict(start=cursor, end=clip["end"], **base))
-    return result
+    return [dict(scene, start=max(scene["start"], r["start"]), end=min(scene["end"], r["end"]))
+            for r in kept_ranges(clip) for scene in result
+            if scene["end"] > r["start"] and scene["start"] < r["end"]]
 
 
 def video_filter(meta, scene, title_input="1:v"):
@@ -275,7 +279,9 @@ def video_filter(meta, scene, title_input="1:v"):
 def export_clip(ctx, project, clip, folder):
     if not clip.get("confirmed"):
         raise ValueError("후킹 문구를 확정한 뒤 인코딩해 주세요.")
-    if not 0 < clip["end"] - clip["start"] <= 180.001:
+    validate_cuts(clip)
+    duration = clip_duration(clip)
+    if not 0 < duration <= 180.001:
         raise ValueError("쇼츠는 최대 3분입니다. 구간을 나눠 주세요.")
     key = render_key(project, clip)
     folder = Path(folder) / "renders" / key
@@ -291,7 +297,14 @@ def export_clip(ctx, project, clip, folder):
     title_image(clip["hook"], clip.get("yellow", ""), title, clip.get("font_size", 80))
     parts = []
     scenes = scenes_for(clip)
+    elapsed, previous_frames = 0, 0
     for i, scene in enumerate(scenes):
+        elapsed += scene["end"] - scene["start"]
+        total_frames = round(elapsed * 30)
+        frames = total_frames - previous_frames
+        previous_frames = total_frames
+        if frames == 0:
+            continue
         ctx.progress(f"{name} · 장면 {i+1}/{len(scenes)} 인코딩", 100 * i / len(scenes))
         part = folder / f"part-{i:03}.mp4"
         temp = folder / f"part-{i:03}.tmp.mp4"
@@ -310,7 +323,9 @@ def export_clip(ctx, project, clip, folder):
             "-i",
             str(title),
             "-t",
-            str(scene["end"] - scene["start"]),
+            str(frames / 30),
+            "-frames:v",
+            str(frames),
             "-filter_complex",
             video_filter(project["metadata"], scene),
             "-map",
@@ -334,8 +349,23 @@ def export_clip(ctx, project, clip, folder):
     concat = folder / "concat.txt"
     concat.write_text("".join(f"file '{p.name}'\n" for p in parts))
     temp = folder / "final.tmp.mp4"
-    # Encode the original continuous audio once; concatenating AAC per scene
-    # accumulates codec priming delay and creates non-monotonic audio timestamps.
+    # Trim/concatenate decoded audio, then encode AAC once for all kept ranges.
+    # Per-scene AAC files accumulate priming delay and break late audio sync.
+    source_args = ["-ss", str(clip["start"]), "-i", project["source"]]
+    audio_args = ["-map", "1:a?", "-c:a", "aac", "-b:a", "192k",
+                  "-af", "aresample=async=1:first_pts=0"]
+    if clip.get("cuts") and project["metadata"].get("has_audio"):
+        source_args = ["-i", project["source"]]
+        ranges = kept_ranges(clip)
+        count = len(ranges)
+        graph = [f"[1:a:0]aresample=48000,asplit={count}" + "".join(f"[src{i}]" for i in range(count))]
+        graph += [f"[src{i}]atrim=start={r['start']}:end={r['end']},asetpts=PTS-STARTPTS[a{i}]"
+                  for i, r in enumerate(ranges)]
+        graph += ["".join(f"[a{i}]" for i in range(count)) + f"concat=n={count}:v=0:a=1,aresample=async=1:first_pts=0[edited_audio]"]
+        script = folder / "audio-filter.txt"
+        script.write_text(";\n".join(graph))
+        audio_args = ["-filter_complex_script", str(script), "-map", "[edited_audio]",
+                      "-c:a", "aac", "-b:a", "192k"]
     ctx.run(
         [
             "ffmpeg",
@@ -349,31 +379,21 @@ def export_clip(ctx, project, clip, folder):
             "1",
             "-i",
             str(concat),
-            "-ss",
-            str(clip["start"]),
-            "-i",
-            project["source"],
+            *source_args,
             "-t",
-            str(clip["end"] - clip["start"]),
+            str(duration),
             "-map",
             "0:v:0",
-            "-map",
-            "1:a?",
             "-c:v",
             "copy",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-af",
-            "aresample=async=1:first_pts=0",
+            *audio_args,
             "-movflags",
             "+faststart",
             str(temp),
         ]
     )
     info = probe(temp)
-    if abs(info["duration"] - (clip["end"] - clip["start"])) > 0.25:
+    if abs(info["duration"] - duration) > 0.25:
         raise RuntimeError(
             "출력 길이가 구간 길이와 다릅니다. 결과를 확정하지 않았습니다."
         )

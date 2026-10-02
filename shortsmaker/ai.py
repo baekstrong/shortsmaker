@@ -7,6 +7,7 @@ import re
 import tempfile
 from pathlib import Path
 from .store import atomic_json
+from .timeline import transcript_for, validate_cuts
 
 
 def obj(properties):
@@ -47,6 +48,10 @@ SPLIT_SCHEMA = obj(
         "summary": TEXT,
     }
 )
+EDIT_SCHEMA = obj({
+    "cuts": {"type": "array", "items": obj({"start": NUMBER, "end": NUMBER, "reason": TEXT})},
+    "summary": TEXT,
+})
 FRAME_SCHEMA = obj(
     {
         "frames": {
@@ -186,8 +191,10 @@ def split(ctx, project, cache_dir):
     prompt = f"""편집이 끝난 한국어 운동/체력 롱폼을 주제별 쇼츠로 나누세요.
 영상 길이 {project['metadata']['duration']}초. 원본 타임코드(초)로 start/end를 지정하세요.
 보통 5~8개지만 개수를 강제하지 마세요. 주제 완결성과 말이 끊기지 않는 경계를 우선합니다.
-각 구간은 반드시 180초 이하, 연속 구간이며 서로 겹치면 안 됩니다. 긴 주제는 하위 주제로 더 나누세요.
-자기소개/구독유도/내용 없는 도입은 제외할 수 있으나 핵심 설명을 빠뜨리지 마세요.
+각 소재 범위는 반드시 180초 이하이며 서로 겹치면 안 됩니다. 긴 주제는 하위 주제로 더 나누세요.
+원본을 빠짐없이 나눌 필요는 없습니다. 독립적으로 이해되는 핵심 주제만 고르고 자기소개/구독유도/내용 없는 도입은 제외하세요.
+첫 발언부터 무슨 이야기인지 알 수 있게 고르세요. 앞 쇼츠를 봐야 이해되는 짧은 조각을 억지로 만들지 마세요.
+선정된 범위 안의 반복 설명·곁가지는 다음 내용 편집 단계에서 삭제합니다. 주제를 고르는 것만으로 편집이 끝난다고 생각하지 마세요.
 전사 문장의 시작/끝 및 발화 사이 여백을 참고하고 말꼬리를 보존하세요. 제목과 선정 이유, 전체 요약도 한국어로.
 전사 데이터:\n{json.dumps(transcript,ensure_ascii=False)}"""
     result = call(
@@ -216,16 +223,52 @@ def split(ctx, project, cache_dir):
         )
 
 
+def edit_content(ctx, project, clip, cache_dir, fresh=False, images=()):
+    transcript = [s for s in project["transcript"]
+                  if s["end"] > clip["start"] and s["start"] < clip["end"]]
+    if not transcript:
+        raise ValueError("편집할 전사 내용이 없습니다. 먼저 내용을 분석해 주세요.")
+    prompt = f"""한국어 운동 쇼츠의 실제 컷 편집을 설계하세요. 편집 기준 버전 1.
+롱폼에서 고른 소재를 그대로 재생하는 것으로 끝내지 말고, 이 쇼츠의 핵심 전달에 불필요한 발언과 촬영 준비 장면을 삭제하세요.
+주제: {clip.get('title', '')}
+현재 상단 문구: {clip.get('hook', '')}
+소재 범위: 원본 {clip['start']} ~ {clip['end']}초.
+cuts에는 실제로 영상과 음성을 함께 삭제할 원본 start/end(초)와 구체적인 reason을 반환하세요. 범위 안에서 시간순으로, 겹치지 않게 지정하세요.
+삭제 후보: 반복되는 같은 설명/질문/시범, 긴 예고·도입·전환 멘트, 본론과 관계없는 곁가지, 개인 홍보·구독 유도, 불필요하게 늘어진 말.
+첨부 이미지는 원본 시간 SOURCE가 적힌 0.5초 간격 연속 화면입니다. 시간순으로 보며 카메라/화면 위치·크기·앵글을 맞추는 과정, 촬영자가 카메라를 만지는 장면, 설명 없이 구도를 잡느라 기다리는 장면, 컬러바·테스트 화면 같은 촬영 흔적을 찾고 반드시 삭제하세요. 안정된 화면이 나온 뒤부터 남기세요.
+정상적인 컷 전환, 설명을 위한 자료 등장, 시범 동작이나 신체·설명 대상을 보여주는 의도적인 카메라 이동은 화면 조정 실수로 취급하지 마세요.
+화면 조정 중 반복한 말은 함께 빼세요. 필수 설명과 겹치면 조정 장면이 남지 않도록 문장 경계를 찾아 자르고, 앞뒤에서 같은 설명이 유지되는지 확인하세요. 모든 컷의 이유에 전사/화면 근거를 구체적으로 적으세요.
+첫 핵심 설명으로 바로 들어가고 전달이 끝나면 끝내세요. 전 구간을 보존하는 것보다 불필요한 부분을 찾는 편집 판단이 필요합니다.
+삭제 후 남은 말을 원래 순서대로 이어 들었을 때 문장이 자연스럽고 독립적으로 이해되어야 합니다.
+운동 이름과 지시 대상, 운동 방법의 필수 조건·동작 설명·근거·주의사항·필요한 시범은 보존하세요. 기관 소개와 운동 이름이 한 문장에 있으면 기관 소개만 빼고 운동 이름은 남기세요. 단순히 짧게 만들려고 핵심을 빼지 마세요.
+시범 반복도 첫 설명과 수행 방법을 이해하는 데 필요한 부분은 남깁니다. 전사만으로 필요 여부를 판단하기 어려운 시범·무음은 삭제하지 마세요.
+문장/완결된 의미 단위의 경계로 자르세요. 한 단어·조사·말꼬리를 자르거나 '이것/그래서/여기서'가 가리키는 내용을 없애지 마세요.
+전사 오류를 사실로 확대하지 말고, 새 발언·순서 변경·자막·배속·내용 보충은 하지 마세요.
+삭제 전후의 연결을 검수하세요. 불필요한 구간이 없으면 cuts=[]와 그 이유를 반환하세요. 목표 길이·삭제 비율은 강제하지 않습니다.
+summary에는 무엇을 남기고 무엇을 덜어냈는지 한국어로 짧게 적으세요.
+전사 데이터(문장과 단어의 원본 시각):\n{json.dumps(transcript, ensure_ascii=False)}"""
+    result = call(ctx, prompt, EDIT_SCHEMA, cache_dir, project["model"], project["effort"], fresh=fresh, images=images)
+    try:
+        validate_cuts(dict(clip, cuts=result["cuts"]))
+    except ValueError as exc:
+        prompt += "\n이전 결과 오류: " + str(exc) + "\n이전 결과: " + json.dumps(result, ensure_ascii=False) + "\n시간과 연결을 수정한 전체 결과를 반환하세요."
+        result = call(ctx, prompt, EDIT_SCHEMA, cache_dir, project["model"], project["effort"], fresh=fresh, images=images)
+        validate_cuts(dict(clip, cuts=result["cuts"]))
+    return result
+
+
 def hooks(ctx, project, clip, cache_dir, fresh=False):
-    text = " ".join(
-        s["text"]
-        for s in project["transcript"]
-        if s["end"] > clip["start"] and s["start"] < clip["end"]
-    )
+    transcript = transcript_for(project, clip)
+    text = " ".join(s["text"] for s in transcript)
     if not text:
         raise ValueError("이 구간에 전사 내용이 없습니다. 먼저 영상을 분석해 주세요.")
-    opening = " ".join(s["text"] for s in project["transcript"]
-                       if s["end"] > clip["start"] and s["start"] < clip["start"] + 8)
+    opening_parts, remaining = [], 8
+    for s in transcript:
+        if remaining <= 0:
+            break
+        opening_parts.append(s["text"])
+        remaining -= s["end"] - s["start"]
+    opening = " ".join(opening_parts)
     prompt = f"""한국어 운동 쇼츠의 상단 후킹 문구를 설계하세요.
 목적은 시청자의 관심을 붙잡아 영상을 보고 싶게 만드는 '후킹'입니다. 단순한 내용 요약이나 주제 설명은 안 됩니다.
 문구 정확히 10개를 자유롭게 만드세요. 질문형 비율, 문장 유형, 접근 방식, 예시 문구에 맞출 필요가 없습니다.

@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import json
 
 from .media import render_key
+from .timeline import clip_duration
 from .service import validate_clip, export_folder
 from .store import atomic_json, now, uid
 from .publishing import timestamp
@@ -63,7 +64,7 @@ class Workflow:
             raise ValueError("중단 후 편집 내용이 바뀌었습니다. 개별 단계를 실행하거나 자동 준비를 새로 시작해 주세요.")
         completed = list(args.get("completed", []))
         try:
-            for stage, label in (("analyze", "내용 분석·분할"), ("hooks", "후킹 제안"), ("framing", "그림·글 확인")):
+            for stage, label in (("analyze", "내용 분석·분할"), ("content_edit", "불필요한 발언 편집"), ("hooks", "후킹 제안"), ("framing", "그림·글 확인")):
                 ctx.check()
                 if stage in completed:
                     continue
@@ -89,7 +90,7 @@ class Workflow:
             raise ValueError("예약할 쇼츠를 체크해 주세요.")
         for c in clips:
             validate_clip(c, p["metadata"]["duration"])
-            if not c.get("hook", "").strip() or c["end"] - c["start"] > 180.001:
+            if not c.get("hook", "").strip() or clip_duration(c) > 180.001:
                 raise ValueError("포함된 쇼츠의 문구와 3분 이하 구간을 먼저 확인해 주세요.")
         return clips
 

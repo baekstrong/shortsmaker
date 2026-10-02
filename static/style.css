@@ -816,3 +816,6 @@ main > header h1 { font-size:22px; margin:3px 0; }
 
 .sound-choice { display:flex; align-items:center; gap:8px; width:100%; }
 .sound-choice select { flex:1; min-width:0; padding:6px 8px; }
+.content-cut { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.content-cut > div { flex: 1; min-width: 0; }
+.content-cut p { margin: 5px 0; font-size: 13px; }

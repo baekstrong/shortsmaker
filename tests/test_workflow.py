@@ -61,6 +61,7 @@ class Service:
         if self.fail == name: raise RuntimeError(name+' failed')
         self.store.change(pid, lambda p: p.update(summary=name))
     def analyze(self,*args): self.stage('analyze',*args)
+    def content_edit(self,*args): self.stage('content_edit',*args)
     def hooks(self,*args): self.stage('hooks',*args)
     def framing(self,*args): self.stage('framing',*args)
 
@@ -88,11 +89,11 @@ def test_prepare_order_and_retry_resumes_without_resplitting(tmp_path):
     j=w.jobs.submit(p['id'],'prepare',{});ctx=Context(w.jobs,j)
     service.fail='hooks'
     with pytest.raises(RuntimeError): w.prepare(ctx,p['id'],j['args'])
-    assert j['args']['completed'] == ['analyze']
+    assert j['args']['completed'] == ['analyze','content_edit']
     service.fail=None
     w.prepare(ctx,p['id'],j['args'])
-    assert service.calls == ['analyze','hooks','hooks','framing']
-    assert [e['stage'] for e in j['stage_events']] == ['analyze','hooks','framing']
+    assert service.calls == ['analyze','content_edit','hooks','hooks','framing']
+    assert [e['stage'] for e in j['stage_events']] == ['analyze','content_edit','hooks','framing']
     assert not conn.created and not any(c['confirmed'] for c in w.store.load(p['id'])['clips'])
 
 

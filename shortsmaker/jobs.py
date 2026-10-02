@@ -262,6 +262,7 @@ class Jobs:
                     "prepare": "자동 준비",
                     "publish_plan": "인코딩·발행 예약",
                     "analyze": "내용 분석·분할",
+                    "content_edit": "불필요한 발언 편집",
                     "hooks": "후킹 후보 생성",
                     "framing": "그림·글 조정 제안",
                     "encode": "쇼츠 인코딩",

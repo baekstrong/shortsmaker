@@ -10,6 +10,7 @@ from pathlib import Path
 from .parallel import parallel_tasks
 from . import ai, media
 from .store import uid
+from .timeline import validate_cuts, trim_cuts
 
 
 def export_folder(project):
@@ -47,6 +48,7 @@ def new_clip(start, end, title="", reason=""):
         frame_overrides=[],
         manual_frame=None,
         render=None,
+        cuts=[],
     )
 
 
@@ -60,6 +62,7 @@ def validate_clip(clip, duration):
         or not 0 <= a < b <= duration + 0.01
     ):
         raise ValueError("시작·끝 시간이 영상 범위를 벗어났습니다.")
+    validate_cuts(clip)
     if len(clip.get("hook", "")) > 100 or len(clip.get("hook", "").splitlines()) > 2:
         raise ValueError("후킹은 최대 두 줄, 100자까지입니다.")
     if clip.get("yellow") and clip["yellow"] not in clip.get("hook", ""):
@@ -100,7 +103,7 @@ class Service:
     def __init__(self, store, jobs):
         self.store, self.jobs = store, jobs
         self._source_checks = set()
-        for kind in ("analyze", "hooks", "framing", "encode"):
+        for kind in ("analyze", "content_edit", "hooks", "framing", "encode"):
             jobs.handlers[kind] = getattr(self, kind)
 
     def source(self, p):
@@ -200,6 +203,36 @@ class Service:
             lambda p: p.update(clips=clips, summary=result["summary"]),
             history=True,
         )
+
+    def content_edit(self, ctx, pid, args):
+        from .editing import review_images
+        p = self.store.load(pid)
+        self.source(p)
+        clips = [c for c in self.selected(p, args)
+                 if args.get("fresh") or c.get("content_edit_version") != 1]
+        if not clips:
+            return
+        results = []
+        def generate(clip):
+            images = review_images(ctx, p["source"], clip,
+                                   self.store.folder(pid) / "content-review" / clip["id"])
+            return ai.edit_content(ctx, p, clip, self.store.folder(pid) / "ai-cache",
+                                   fresh=args.get("fresh", False), images=images)
+        ctx.progress(f"불필요한 발언 편집 · 0/{len(clips)} 완료", 0)
+        with parallel_tasks(ctx, generate, clips) as completed:
+            for i, (clip, result) in enumerate(completed, 1):
+                results.append((clip["id"], result))
+                ctx.progress(f"불필요한 발언 편집 · {i}/{len(clips)} 완료", i * 100 / len(clips))
+        ctx.check()
+        def save(project):
+            for cid, result in results:
+                c = next(c for c in project["clips"] if c["id"] == cid)
+                if c.get("cuts", []) != result["cuts"]:
+                    c["confirmed"] = False
+                c.update(cuts=result["cuts"], content_edit_summary=result["summary"],
+                         content_edit_version=1)
+                validate_clip(c, project["metadata"]["duration"])
+        self.store.change(pid, save, revision=p["revision"], history=True)
 
     def hooks(self, ctx, pid, args):
         p = self.store.load(pid)
@@ -317,7 +350,18 @@ class Service:
             c = next((c for c in p["clips"] if c["id"] == body.get("clip_id")), None)
             if c is None:
                 raise ValueError("쇼츠를 찾을 수 없습니다.")
-            if action == "frame_region_add":
+            if action == "restore_cut":
+                index = body.get("index")
+                if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(c.get("cuts", [])):
+                    raise ValueError("복원할 삭제 구간을 다시 선택해 주세요.")
+                c["cuts"].pop(index)
+                c.update(confirmed=False, content_edit_summary="삭제 구간을 직접 복원했습니다.")
+            elif action == "cut":
+                cut = dict(start=body.get("start"), end=body.get("end"), reason="직접 삭제한 구간")
+                validate_cuts(dict(c, cuts=[cut]))
+                c["cuts"] = sorted(c.get("cuts", []) + [cut], key=lambda r: r["start"])
+                c.update(confirmed=False, content_edit_summary="불필요한 구간을 직접 삭제했습니다.")
+            elif action == "frame_region_add":
                 start, end = body.get("start"), body.get("end")
                 if (not all(isinstance(t, (int, float)) and not isinstance(t, bool) and math.isfinite(t) for t in (start, end))
                         or not c["start"] <= start < end <= c["end"]):
@@ -370,6 +414,8 @@ class Service:
                 second.update(id=uid(), start=at, title=c["title"] + " (2)")
                 c["end"] = at
                 for part in (c, second):
+                    trim_cuts(part)
+                    part.pop("content_edit_version", None)
                     part.update(confirmed=False, render=None)
                     part["frame_overrides"] = [dict(f, start=max(part["start"], f["start"]), end=min(part["end"], f["end"]))
                         for f in part.get("frame_overrides", []) if f["end"] > part["start"] and f["start"] < part["end"]]
@@ -386,6 +432,16 @@ class Service:
                 if i + 1 >= len(p["clips"]):
                     raise ValueError("뒤에 합칠 구간이 없습니다.")
                 other = p["clips"][i + 1]
+                # Keep the gap between two edited shorts excluded when joining them.
+                cuts = c.get("cuts", []) + other.get("cuts", [])
+                if c["end"] < other["start"]:
+                    cuts.append(dict(start=c["end"], end=other["start"], reason="합친 쇼츠 사이의 제외 구간"))
+                merged_cuts = []
+                for cut in sorted(cuts, key=lambda r: r["start"]):
+                    if merged_cuts and cut["start"] <= merged_cuts[-1]["end"]:
+                        merged_cuts[-1]["end"] = max(merged_cuts[-1]["end"], cut["end"])
+                    else:
+                        merged_cuts.append(dict(cut))
                 c.update(
                     start=min(c["start"], other["start"]),
                     end=max(c["end"], other["end"]),
@@ -396,7 +452,9 @@ class Service:
                     framing=[],
                     frame_suggestions=None,
                     render=None,
+                    cuts=merged_cuts,
                 )
+                c.pop("content_edit_version", None)
                 p["clips"].pop(i + 1)
             elif action == "update":
                 allowed = (
@@ -418,11 +476,13 @@ class Service:
                 )
                 if bounds:
                     c.update(confirmed=False)
+                    c.pop("content_edit_version", None)
                     changes["confirmed"] = False
                 c.update(changes)
             else:
                 raise ValueError("지원하지 않는 편집입니다.")
             if action in ("split", "merge", "update"):
+                trim_cuts(c)
                 c["frame_overrides"] = [dict(f, start=max(c["start"], f["start"]), end=min(c["end"], f["end"]))
                     for f in c.get("frame_overrides", []) if f["end"] > c["start"] and f["start"] < c["end"]]
             if action == "update" and bounds and c.get("frame_suggestions") is not None:
