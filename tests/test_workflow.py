@@ -89,12 +89,29 @@ def test_prepare_order_and_retry_resumes_without_resplitting(tmp_path):
     j=w.jobs.submit(p['id'],'prepare',{});ctx=Context(w.jobs,j)
     service.fail='hooks'
     with pytest.raises(RuntimeError): w.prepare(ctx,p['id'],j['args'])
-    assert j['args']['completed'] == ['analyze','content_edit']
+    assert j['args']['completed'] == ['analyze']
     service.fail=None
     w.prepare(ctx,p['id'],j['args'])
-    assert service.calls == ['analyze','content_edit','hooks','hooks','framing']
-    assert [e['stage'] for e in j['stage_events']] == ['analyze','content_edit','hooks','framing']
+    assert service.calls == ['analyze','hooks','hooks','framing']
+    assert [e['stage'] for e in j['stage_events']] == ['analyze','hooks','framing']
+    assert j['args']['completed'] == ['analyze','hooks','framing']
     assert not conn.created and not any(c['confirmed'] for c in w.store.load(p['id'])['clips'])
+
+
+@pytest.mark.parametrize('completed,remaining', [
+    (['analyze','content_edit'], ['hooks','framing']),
+    (['analyze','content_edit','hooks'], ['framing']),
+])
+def test_prepare_resumes_legacy_content_edit_checkpoint_without_repeating_stages(tmp_path, completed, remaining):
+    w,p,conn,service=setup(tmp_path)
+    j=w.jobs.submit(p['id'],'prepare',dict(completed=completed, resume_revision=p['revision']))
+    service.fail='content_edit'
+    w.prepare(Context(w.jobs,j),p['id'],j['args'])
+    assert service.calls == remaining
+    assert [e['stage'] for e in j['stage_events']] == remaining
+    assert all(stage in j['args']['completed'] for stage in ('analyze','hooks','framing'))
+    assert w.store.load(p['id'])['clips'] == p['clips']
+    assert not conn.created and not conn.uploads
 
 
 def test_prepare_retry_rejects_intervening_edit(tmp_path):

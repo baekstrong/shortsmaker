@@ -341,9 +341,8 @@ function renderEditor() {
   fieldValue("clip-title", c.title);
   fieldValue("start", c.start);
   fieldValue("end", c.end);
-  $("content-edit-summary").textContent = c.content_edit_summary || "AI 컷 편집으로 반복 설명·전환 멘트·화면 조정 과정을 덜어내세요.";
+  $("content-edit-legacy").hidden = !(c.cuts || []).length;
   $("content-cuts").innerHTML = (c.cuts || []).map((cut, i) => `<div class="content-cut"><div><strong>원본 ${cut.start.toFixed(2)} ~ ${cut.end.toFixed(2)}초 삭제</strong><p>${esc(cut.reason)}</p></div><button data-restore-cut="${i}" class="quiet">복원</button></div>`).join("");
-  for (const id of ["cut-start", "cut-end"]) { $(id).min = c.start; $(id).max = c.end; }
   const draft = titleDrafts.get(`${pid}/${cid}`);
   fieldValue("hook", draft?.changes.hook ?? c.hook);
   fieldValue("yellow", draft?.changes.yellow ?? c.yellow);
@@ -726,7 +725,7 @@ for (const button of document.querySelectorAll("[data-stage]"))
       )
     )
       return;
-    await run(kind, kind === "content_edit" ? { fresh: true } : {});
+    await run(kind);
   });
 for (const id of ["new-project", "empty-import"])
   $(id).onclick = () => $("import-dialog").showModal();
@@ -1065,18 +1064,9 @@ $("seek").oninput = () => {
   updatePreview();
 };
 new ResizeObserver(updatePreview).observe($("preview"));
-$("edit-content").onclick = safe(() => run("content_edit", { clip_ids: [cid], fresh: true }));
 $("content-cuts").onclick = safe(async (event) => {
   const button = event.target.closest("[data-restore-cut]");
   if (button) await edit("restore_cut", { index: Number(button.dataset.restoreCut) });
-});
-for (const edge of ["start", "end"]) $("cut-" + edge + "-now").onclick = () => {
-  $("cut-" + edge).value = $("video").currentTime.toFixed(3);
-};
-$("cut-range").onclick = safe(async () => {
-  const start = $("cut-start"), end = $("cut-end");
-  if (!start.value || !end.value || !start.reportValidity() || !end.reportValidity()) throw Error("삭제할 원본 시작·끝 시간을 입력해 주세요.");
-  await edit("cut", { start: Number(start.value), end: Number(end.value) });
 });
 $("download").onclick = safe(async () => {
   if (!clip()?.render) throw Error("먼저 인코딩을 완료해 주세요.");

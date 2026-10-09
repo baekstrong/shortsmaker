@@ -85,7 +85,7 @@
       <div id="workspace" hidden>
         <div class="workflow-actions">
           <div><button id="prepare-auto" class="primary">① AI 자동 준비</button>
-            <p>주제 선정 → 불필요한 발언 편집 → 후킹·화면 구도</p></div>
+            <p>주제별 구간 선정 → 후킹·화면 구도 · 구간 안의 영상은 그대로 유지</p></div>
           <span class="workflow-arrow">→</span>
           <div><button id="schedule-open" class="primary">② 검토 완료 · 예약 달력</button>
             <p>문구·구도와 달력 확정 → 인코딩 → 매일 낮 12시 예약</p></div>
@@ -93,7 +93,6 @@
         <details class="individual-stages"><summary>개별 단계 다시 실행</summary>
           <div class="steps">
             <button data-stage="analyze">내용 분석·분할</button>
-            <button data-stage="content_edit">불필요한 발언 다시 편집</button>
             <button data-stage="hooks">후킹 제안</button>
             <button data-stage="framing">설명 화면 찾기</button>
             <button data-stage="encode">인코딩만</button>
@@ -170,22 +169,10 @@
                 <button id="delete-clip" title="선택한 쇼츠 구간만 삭제합니다. 되돌리기로 복원할 수 있습니다.">이 구간 삭제</button>
               </div>
               <hr />
-              <div class="pane-heading">
-                <h3>내용 편집</h3>
-                <button id="edit-content" class="quiet">이 쇼츠 AI 컷 편집</button>
-              </div>
-              <p id="content-edit-summary" class="muted"></p>
-              <small>삭제 구간은 재생·출력에서 빠집니다. 아래 시간과 구도 적용 시간은 원본 소재 기준입니다.</small>
-              <div id="content-cuts" aria-label="삭제한 발언과 복원"></div>
-              <details><summary>불필요한 구간 직접 삭제</summary>
-                <div class="row">
-                  <label>원본 시작 (초)<input id="cut-start" type="number" min="0" step="0.01" /></label>
-                  <label>원본 끝 (초)<input id="cut-end" type="number" min="0" step="0.01" /></label>
-                </div>
-                <div class="row"><button id="cut-start-now" class="quiet">현재 위치를 삭제 시작으로</button><button id="cut-end-now" class="quiet">현재 위치를 삭제 끝으로</button></div>
-                <button id="cut-range">이 시간 구간 삭제</button>
+              <details id="content-edit-legacy" hidden><summary>기존 삭제 구간 복원</summary>
+                <p class="muted">이전에 삭제한 구간입니다. 복원하면 해당 영상이 다시 이어집니다.</p>
+                <div id="content-cuts" aria-label="삭제한 발언과 복원"></div>
               </details>
-              <hr />
               <div class="pane-heading">
                 <h3>화면 구도</h3>
                 <button id="auto-frame" class="quiet">설명 화면 찾기</button>

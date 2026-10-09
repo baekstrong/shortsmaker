@@ -71,3 +71,21 @@ def test_delete_busy_project_is_rejected(client, monkeypatch):
     assert response.status_code == 409
     assert len(store.list()) == 1
     assert "deleted_at" not in store.load(p["id"])
+
+
+def test_retired_ai_cut_cannot_be_submitted_or_retried(client):
+    store = client.application.extensions["store"]
+    jobs = client.application.extensions["jobs"]
+    p = store.create("/tmp/source.mp4", dict(duration=60, width=1920, height=1080))
+    headers = {"X-Shortsmaker": "1"}
+    response = client.post(f"/api/projects/{p['id']}/jobs/content_edit",
+                           json={}, headers=headers)
+    assert response.status_code == 400
+    assert jobs.list() == []
+    # Persisted interrupted jobs from older versions must not reapply cuts.
+    jobs.items["legacy"] = dict(id="legacy", project_id=p["id"], kind="content_edit",
+                                status="interrupted", args={}, created_at="2026-10-02")
+    response = client.post("/api/jobs/legacy/retry", json={}, headers=headers)
+    assert response.status_code == 400
+    assert len(jobs.list()) == 1
+    assert store.load(p["id"]) == p

@@ -64,7 +64,7 @@ class Workflow:
             raise ValueError("중단 후 편집 내용이 바뀌었습니다. 개별 단계를 실행하거나 자동 준비를 새로 시작해 주세요.")
         completed = list(args.get("completed", []))
         try:
-            for stage, label in (("analyze", "내용 분석·분할"), ("content_edit", "불필요한 발언 편집"), ("hooks", "후킹 제안"), ("framing", "그림·글 확인")):
+            for stage, label in (("analyze", "내용 분석·분할"), ("hooks", "후킹 제안"), ("framing", "그림·글 확인")):
                 ctx.check()
                 if stage in completed:
                     continue

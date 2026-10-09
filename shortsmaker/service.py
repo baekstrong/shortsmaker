@@ -103,7 +103,7 @@ class Service:
     def __init__(self, store, jobs):
         self.store, self.jobs = store, jobs
         self._source_checks = set()
-        for kind in ("analyze", "content_edit", "hooks", "framing", "encode"):
+        for kind in ("analyze", "hooks", "framing", "encode"):
             jobs.handlers[kind] = getattr(self, kind)
 
     def source(self, p):
