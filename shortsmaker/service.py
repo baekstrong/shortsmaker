@@ -266,7 +266,7 @@ class Service:
                     hook_analysis={k: result.get(k, "") for k in
                                    ("audience_problem", "content_evidence", "viewer_expectation", "new_insight")},
                     hook_review=result.get("review", {}),
-                    hook_version=4,
+                    hook_version=ai.HOOK_VERSION,
                 )
                 if not c["confirmed"] or args.get("replace_selected", False):
                     recommended = result["hooks"][result["recommended_index"]]

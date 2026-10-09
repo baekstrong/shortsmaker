@@ -23,6 +23,10 @@ def obj(properties):
 NUMBER = {"type": "number"}
 TEXT = {"type": "string"}
 HOOK_CANDIDATE_COUNT = 10
+HOOK_MIN_CHARS = 15
+HOOK_MAX_CHARS = 20
+HOOK_VERSION = 5
+HOOK_REVIEW_GATES = ("standalone_clear", "compelling_question", "payoff_supported")
 HOOK_ITEM = obj({"text": TEXT, "yellow_phrase": TEXT, "approach": TEXT})
 HOOK_DRAFT_SCHEMA = obj(
     {
@@ -41,6 +45,7 @@ HOOK_DRAFT_SCHEMA = obj(
 HOOK_REVIEW_SCHEMA = obj({
     "reviews": {"type": "array", "minItems": HOOK_CANDIDATE_COUNT, "maxItems": HOOK_CANDIDATE_COUNT, "items": obj({
         "index": {"type": "integer", "minimum": 0, "maximum": HOOK_CANDIDATE_COUNT - 1},
+        **{gate: {"type": "boolean"} for gate in HOOK_REVIEW_GATES},
         "passes": {"type": "boolean"},
         "reason": TEXT,
         "weakness": TEXT,
@@ -281,8 +286,11 @@ def hook_candidate_errors(hooks):
         problems = []
         if text != text.strip():
             problems.append("문구 앞뒤 공백을 제거하세요.")
-        if len(text) > 15:
-            problems.append(f"현재 {len(text)}자입니다. 공백·문장부호·줄바꿈 포함 15자 이내로 줄이세요.")
+        if not HOOK_MIN_CHARS <= len(text) <= HOOK_MAX_CHARS:
+            instruction = ("상황이나 대상을 보충해 자연스러운 문장으로 쓰세요. 군더더기로 길이만 채우지 마세요."
+                           if len(text) < HOOK_MIN_CHARS else
+                           "상황과 궁금증을 유지하며 군더더기만 덜어내세요. 조사나 어미를 잘라 줄이지 마세요.")
+            problems.append(f"현재 {len(text)}자입니다. 공백·문장부호·줄바꿈 포함 {HOOK_MIN_CHARS}~{HOOK_MAX_CHARS}자로 작성하세요. " + instruction)
         if len(text.splitlines()) > 2:
             problems.append("최대 두 줄로 작성하세요.")
         if text in seen:
@@ -325,6 +333,10 @@ def validate_hook_review(review, count, require_ten=True):
     if not review["reason"].strip() or any(not isinstance(r["passes"], bool) or not r["reason"].strip() or not r["weakness"].strip()
            for r in decisions):
         raise ValueError("후킹의 통과 여부와 검수 근거를 확인해 주세요.")
+    for decision in decisions:
+        gates = [decision.get(gate) for gate in HOOK_REVIEW_GATES]
+        if any(not isinstance(value, bool) for value in gates) or decision["passes"] != all(gates):
+            raise ValueError("후킹의 문구 단독 이해·궁금증·영상 답변 검수와 통과 여부가 일치하지 않습니다.")
     selected = review["selected_indices"]
     passed = {r["index"] for r in decisions if r["passes"]}
     if (any(not isinstance(i, int) or isinstance(i, bool) or i not in passed for i in selected)
@@ -364,17 +376,18 @@ def hooks(ctx, project, clip, cache_dir, fresh=False, images=()):
 첨부는 삭제 후 첫8초 안의 원본 화면입니다. EDITED는 편집 후 시각, SOURCE는 원본 시각입니다.
 화면은 의도된 크롭 전 원본이므로 글이나 몸 전체가 완성 화면에서 보일 것이라 가정하지 마세요.
 원본 맥락은 시청 대상·교정 목적을 잃지 않기 위한 정보입니다. 다른 쇼츠의 설명이나 삭제한 발언을 이 쇼츠에서 답해 주겠다고 약속하지 마세요."""
-    rules = """핵심 시청자는 원본의 주요 문제를 겪으며 방법을 찾는 사람입니다. 클립에 등장하는 교정 운동의 이름·전문용어를 이미 안다고 가정하지 마세요. 시청자가 실제 겪는 문제·답답함·오해와 이 영상에서 얻을 구체적인 단서를 연결하세요.
+    rules = f"""목표는 짧은 제목이 아니라, 맥락을 전혀 모르는 사람이 상황을 이해하고 답이 궁금해 이 쇼츠의 답변까지 계속 보게 만드는 문장입니다. 글자 수를 줄이는 것보다 이해와 시청 이유가 우선입니다.
+핵심 시청자는 원본의 주요 문제를 겪으며 방법을 찾는 사람입니다. 클립에 등장하는 교정 운동의 이름·전문용어를 이미 안다고 가정하지 마세요. 시청자가 실제 겪는 문제·답답함·오해와 이 영상에서 얻을 구체적인 단서를 연결하세요.
 이 클립이 원래 문제를 해결하기 위한 보조 운동이라면 그 운동의 사용 목적을 유지하세요. 시청 대상을 임의로 그 운동 이름을 이미 알고 배우려는 사람으로 좁히지 마세요. 원래 문제를 겪는 사람이 왜 이 시범을 봐야 하는지 문구에서 이해할 수 있어야 합니다.
-문구만 보아도 상황/대상/동작을 이해할 수 있어야 합니다. 15자로 줄이면서 문제와 맥락까지 숨기지 마세요. 답이나 방법을 궁금하게 남기되 무엇이 궁금한지는 분명해야 합니다.
+문구만 보아도 어떤 상황에서 무엇을 고민하는지 이해할 수 있어야 합니다. 주제명·설명문·첫 발언을 읽어야만 뜻이 통하면 탈락입니다. 상황과 대상은 문구에 드러내고, 그 상황의 이유·판단 기준·해결 방법 중 영상에서 확인할 답을 남기세요. 무엇을 말하는지 모르는 혼란을 궁금증으로 취급하지 마세요.
 실제 내용의 의외의 연결·예상과 다른 선택·확인할 단서·얻을 변화를 찾으세요. 익숙한 사실에 물음표를 붙이거나 운동 이름/방법을 소개하는 것만으로 끝내지 마세요.
-전문용어를 몰라도 뜻이 통하고 실제 사람들이 쓰는 자연스러운 한국어여야 합니다. 약한 말장난, 자극이 세다는 말만 남긴 표현, 뜻 없는 지시어·숫자·미완성 문구를 피하세요.
+전문용어를 몰라도 뜻이 통하고 실제 사람들이 쓰는 자연스러운 한국어 문장이어야 합니다. 조사·조건·서술어를 빼서 압축한 메모나 명사 나열은 탈락입니다. 약한 말장난, 자극이 세다는 말만 남긴 표현, 뜻 없는 지시어·숫자·미완성 문구를 피하세요. 길이를 채우기 위한 군더더기도 쓰지 마세요.
 문구를 따라 했을 때 다른 동작을 하게 만드는 오해가 없어야 합니다. 교정 운동의 조건을 스쿼트 자세 지시로 바꾸지 마세요. 운동 전체에 적용되는 규칙이나 효과 보장으로 확대하지 마세요.
 근거는 이 쇼츠의 남은 발언과 화면입니다. 체험·통계·통증·원인 단정·결과 보장·내용에 없는 반박을 지어내지 마세요. 보지 않아도 답이 끝나는 단순 요약은 제외하세요.
-첫 발언과 첫 화면을 보고 연결이 성립하는지 확인하세요. 초반 연결이 약하거나 답이 늦게 나오는 후보는 그 약점을 평가에 반영하세요.
+첫 발언과 첫 화면은 문구의 의미를 보충하는 용도가 아니라 약속한 내용으로 실제 이어지는지 확인하는 근거입니다. 답이 뒤에 있어도 초반부터 관련성이 보여야 합니다. 끝까지 보라고 요구하거나 답을 억지로 감추지 말고 답을 확인할 이유를 만드세요. 초반이 다른 얘기여서 연결이 성립하지 않으면 탈락시키세요.
 질문형 비율, 문장 유형, 접근 개수, 고정 문구 양식을 강제하지 않습니다. 모든 후보에 같은 운동명을 붙일 필요도 없습니다.
-공백·문장부호·줄바꿈 포함15자 이내, 최대 두 줄입니다. 글자 수와 문장 자연스러움을 마지막에 확인하세요."""
-    prompt = f"""한국어 운동 쇼츠의 상단 후킹 후보를 자유롭게 설계하세요. 후킹 편집 기준 버전4.
+공백·문장부호·줄바꿈 포함 {HOOK_MIN_CHARS}~{HOOK_MAX_CHARS}자, 최대 두 줄입니다. 먼저 자연스러운 문장을 만들고 글자 수를 마지막에 확인하세요. 문구를 기계적으로 잘라 맞추지 마세요."""
+    prompt = f"""한국어 운동 쇼츠의 상단 후킹 후보를 자유롭게 설계하세요. 후킹 편집 기준 버전{HOOK_VERSION}.
 {rules}
 먼저 audience_problem에 실제 시청자의 상황·문제를, viewer_expectation에 그 사람이 예상하는 원인/해법을, new_insight에 영상이 제공하는 새 단서/관점을, content_evidence에 이를 뒷받침하는 실제 발언을 짧게 적으세요. 영상에 없는 예상은 사실로 쓰지 마세요.
 그 분석을 바탕으로 서로 다른 후보10개를 쓰세요. 현재 문구가 약하면 시청 이유가 더 선명한 표현을 찾으세요. 현재 문구도 기준을 충족하면 후보 하나로 포함해 비교할 수 있습니다. 같은 실제 단서를 자연스러운 여러 표현으로 전달해도 됩니다. 서로 다른 사실이나 유형10개를 억지로 만들지 마세요. 어미만 바꾸거나 똑같은 문구를 중복시키지는 마세요.
@@ -398,13 +411,19 @@ yellow_phrase는 text에 그대로 포함된 비어 있지 않은 연속 구절�
                 validate_hook_candidates(draft["hooks"])
             candidates = [dict(index=i, text=draft["hooks"][original]["text"])
                           for i, original in enumerate(valid_indexes)]
-            review_prompt = f"""처음 보는 시청자의 입장에서 후킹{len(candidates)}개를 엄격히 검수하는 독립 편집자입니다. 후킹 편집 기준 버전4.
+            review_prompt = f"""처음 보는 시청자의 입장에서 후킹{len(candidates)}개를 엄격히 검수하는 독립 편집자입니다. 후킹 편집 기준 버전{HOOK_VERSION}.
 작성자의 표현 의도·평가·추천은 제공되지 않았습니다. 문구 자체와 원본 근거로 판단하세요. 후보 순서에 우열은 없습니다.
 {rules}
 약한 문구를 그럴듯하게 정당화하지 마세요. 모든 후보의 장점을 찾는 것이 아니라 이해/시청 이유/내용 일치/실행 오해를 확인하고 부족하면 탈락시키는 작업입니다.
-후보마다 index와 passes, 구체적인 reason 및 weakness를 각각 짧은 한 문장으로 적으세요. 약점이 없다면 weakness에 '큰 약점 없음'을 적되 설명/맥락/전문용어 문제를 다시 확인하세요.
+후보마다 다음 세 기준을 각각 boolean으로 판정하세요. 첫 두 기준은 문구에 실제로 쓰인 말만으로 판정하고, 전사·주제·화면에서 얻은 지식으로 빠진 의미를 보충하지 마세요.
+standalone_clear: 문구만 처음 읽고 상황과 문장의 뜻이 즉시 이해되며 자연스러운 문장인가? 조사·서술어가 빠졌거나 무엇을 뜻하는지 추측해야 하면 false입니다.
+compelling_question: 뜻을 이해한 뒤에도 영상에서 확인하고 싶은 구체적인 질문이 남는가? 단순 요약·당연한 질문·'뭔 소리지?'라는 혼란이면 false입니다.
+payoff_supported: 그 질문의 답이나 판단 근거가 이 쇼츠에 실제로 있고 초반 발언/화면에서 답으로 이어지는가? 다른 쇼츠에만 있는 답, 과장, 실행 오해, 엉뚱한 초반이면 false입니다.
+passes는 세 기준이 모두 true일 때만 true입니다. 한 기준이라도 false면 장점이 있어도 탈락시키세요.
+reason에는 문구만으로 이해한 상황과 시청자가 품을 구체적인 질문, 영상의 어느 발언/장면이 답하는지를 짧게 적으세요. weakness에는 탈락한 기준과 보완할 내용을 우선 쓰세요. 약점이 없다면 '큰 약점 없음'을 적되 설명/맥락/전문용어 문제를 다시 확인하세요.
 전체{len(candidates)}개를 빠짐없이 한 번씩 검수하세요. 표현을 새로 쓰거나 고치지 마세요.
 selected_indices에는 통과한 후보의 index를 좋은 순서대로 적으세요. 10개가 안 되면 통과한 수만 반환하세요. 개수를 채우려고 기준을 낮추지 마세요. 같은 사실을 다른 자연스러운 표현으로 전달하는 것은 탈락 이유가 아닙니다.
+추천 순서는 문구 단독 이해와 판단 대상의 명확성을 먼저, 그다음 궁금증과 영상 연결을 비교하세요. 무엇을 끝내거나 바꾸는지 해석해야 하는 후보를, 그 대상이 문구에 드러난 후보보다 앞에 놓지 마세요. 답은 숨겨도 질문의 대상과 범위까지 숨기면 안 됩니다.
 첫 후보가 최우선 추천입니다. reason에는 최우선 후보가 다른 후보보다 왜 볼 이유를 더 선명하게 만드는지와 남는 약점을 짧게 적으세요. 조회수나 시청 유지 성과를 보장하지 마세요.
 {evidence}
 후보 문구: {json.dumps(candidates, ensure_ascii=False)}"""
@@ -415,7 +434,8 @@ selected_indices에는 통과한 후보의 index를 좋은 순서대로 적으�
             review = dict(
                 reviews=sorted(
                     [dict(r, index=valid_indexes[r["index"]]) for r in subset_review["reviews"]]
-                    + [dict(index=i, passes=False, reason=error, weakness=error)
+                    + [dict(index=i, passes=False, reason=error, weakness=error,
+                            **{gate: False for gate in HOOK_REVIEW_GATES})
                        for i, error in errors.items()], key=lambda r: r["index"]),
                 selected_indices=[valid_indexes[i] for i in subset_review["selected_indices"]],
                 reason=subset_review["reason"],

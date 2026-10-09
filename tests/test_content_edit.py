@@ -43,9 +43,10 @@ def test_hook_prompt_uses_only_kept_words_and_actual_opening(tmp_path, monkeypat
         assert '홍보' not in prompt
         assert '첫8초 발언: 핵심 설명' in prompt
         if schema is ai.HOOK_DRAFT_SCHEMA:
-            return dict(hooks=[dict(text=f'후보{i}', yellow_phrase='후보', approach='표현 의도') for i in range(10)],
+            return dict(hooks=[dict(text=f'핵심 설명에서 궁금한 후보{i}', yellow_phrase='후보', approach='표현 의도') for i in range(10)],
                         audience_problem='문제', content_evidence='설명', viewer_expectation='기대', new_insight='단서')
-        return dict(reviews=[dict(index=i, passes=True, reason='근거 일치', weakness='초반 연결') for i in range(10)],
+        return dict(reviews=[dict(index=i, passes=True, standalone_clear=True, compelling_question=True,
+                                 payoff_supported=True, reason='근거 일치', weakness='초반 연결') for i in range(10)],
                     selected_indices=list(range(10)), reason='비교 추천')
     monkeypatch.setattr(ai,'call',call)
     ai.hooks(None,p,c,tmp_path)

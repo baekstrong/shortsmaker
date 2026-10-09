@@ -18,14 +18,15 @@ def hook_draft():
         content_evidence="draft_evidence_marker",
         viewer_expectation="draft_expectation_marker",
         new_insight="draft_insight_marker",
-        hooks=[dict(text=f"후보{i:02}", yellow_phrase="후보",
+        hooks=[dict(text=f"후보 {i:02} 운동을 끝내는 기준은?", yellow_phrase="후보",
                     approach=f"draft_approach_marker_{i}") for i in range(10)],
     )
 
 
 def hook_review():
     return dict(
-        reviews=[dict(index=i, passes=True, reason=f"독립 검수 근거 {i}",
+        reviews=[dict(index=i, passes=True, standalone_clear=True,
+                      compelling_question=True, payoff_supported=True, reason=f"독립 검수 근거 {i}",
                       weakness=f"검수 약점 {i}") for i in range(10)],
         selected_indices=list(range(9, -1, -1)),
         reason="최우선 문구의 구체적인 시청 이유",
@@ -106,6 +107,7 @@ def test_invalid_independent_reviews_are_rejected(invalid):
     review = hook_review()
     if invalid == "failed_selection":
         review["reviews"][9]["passes"] = False
+        review["reviews"][9]["standalone_clear"] = False
     elif invalid == "missing_review":
         review["reviews"].pop()
     elif invalid == "duplicate_review":
@@ -120,16 +122,37 @@ def test_invalid_independent_reviews_are_rejected(invalid):
         ai.validate_hook_review(review, 10, require_ten=False)
 
 
+@pytest.mark.parametrize("criterion", ["standalone_clear", "compelling_question", "payoff_supported"])
+@pytest.mark.parametrize("problem", ["false_pass", "missing", "non_boolean"])
+def test_review_cannot_pass_missing_or_failed_viewer_criteria(criterion, problem):
+    review = hook_review()
+    decision = review["reviews"][0]
+    if problem == "missing":
+        del decision[criterion]
+    else:
+        decision[criterion] = False if problem == "false_pass" else 1
+    with pytest.raises(ValueError):
+        ai.validate_hook_review(review, 10, require_ten=False)
+
+
+def test_review_cannot_fail_when_all_viewer_criteria_pass():
+    review = hook_review()
+    review["reviews"][0]["passes"] = False
+    review["selected_indices"].remove(0)
+    with pytest.raises(ValueError):
+        ai.validate_hook_review(review, 10, require_ten=False)
+
+
 @pytest.mark.parametrize("final_count", [10, 9, 1])
 def test_weak_hooks_are_repaired_once_with_compact_feedback_and_passed_hooks_preserved(tmp_path, monkeypatch, final_count):
     project, clip = edited_project()
     calls = []
     first_draft = hook_draft()
     replacement = hook_draft()
-    replacement["hooks"] = [dict(text=f"변경{i:02}", yellow_phrase="변경",
+    replacement["hooks"] = [dict(text=f"변경 {i:02} 운동을 끝내는 기준은?", yellow_phrase="변경",
                                  approach=f"changed_approach_marker_{i}") for i in range(10)]
     bad_review = hook_review()
-    bad_review["reviews"][9].update(passes=False, reason="weak_reason_marker",
+    bad_review["reviews"][9].update(passes=False, standalone_clear=False, reason="weak_reason_marker",
                                   weakness="weak_weakness_marker")
     bad_review["selected_indices"] = list(range(8, -1, -1))
 
@@ -159,6 +182,7 @@ def test_weak_hooks_are_repaired_once_with_compact_feedback_and_passed_hooks_pre
             final_review = hook_review()
             for decision in final_review["reviews"]:
                 decision["passes"] = decision["index"] < final_count
+                decision["standalone_clear"] = decision["passes"]
             final_review["selected_indices"] = list(range(final_count - 1, -1, -1))
             return final_review
         return copy.deepcopy(bad_review)
@@ -185,6 +209,7 @@ def test_two_failed_reviews_raise_for_zero_passes_or_malformed_result(tmp_path, 
     zero_review["selected_indices"] = []
     for decision in zero_review["reviews"]:
         decision["passes"] = False
+        decision["standalone_clear"] = False
 
     def call(ctx, prompt, schema, *args, **kwargs):
         calls.append(schema)

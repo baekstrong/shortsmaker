@@ -18,13 +18,14 @@ def project_and_clip():
 def draft(prefix="기준"):
     return dict(audience_problem="세트 종료를 고민하는 사람", content_evidence="속도와 자세 변화",
                 viewer_expectation="멈출 기준", new_insight="첫 반복과 비교",
-                hooks=[dict(text=f"{prefix}{i}", yellow_phrase=prefix, approach=f"표현 의도 {i}")
+                hooks=[dict(text=f"운동은 언제 멈춰야 하나요 {prefix}{i}", yellow_phrase=prefix, approach=f"표현 의도 {i}")
                        for i in range(10)])
 
 
 def review(count, selected=None, round_number=1):
     selected = list(range(count - 1, -1, -1)) if selected is None else selected
-    return dict(reviews=[dict(index=i, passes=i in selected,
+    return dict(reviews=[dict(index=i, passes=i in selected, standalone_clear=i in selected,
+                             compelling_question=True, payoff_supported=True,
                              reason=f"회차{round_number} 검수{i}", weakness=f"회차{round_number} 약점{i}")
                          for i in range(count)], selected_indices=selected,
                 reason="첫 후보가 종료 판단의 단서를 보여줍니다.")
@@ -53,13 +54,13 @@ def repair_feedback(prompt):
     return feedback
 
 
-def test_real_16_and_17_character_failures_keep_approved_hooks_and_map_indexes(tmp_path, monkeypatch):
+def test_21_and_22_character_failures_keep_approved_hooks_and_map_indexes(tmp_path, monkeypatch):
     project, clip = project_and_clip()
     first = draft()
-    # These two exact AI outputs stopped the real prepare job on 2026-10-09.
-    first["hooks"][6].update(text="자세 흔들려도\n한 세트 채워?", yellow_phrase="자세 흔들려도")
-    first["hooks"][8].update(text="5회째 느려진\n푸쉬업은 몇 회?", yellow_phrase="5회째 느려진")
-    assert [len(first["hooks"][i]["text"]) for i in (6, 8)] == [16, 17]
+    # Preserve recovery/index mapping coverage at the new 20-character ceiling.
+    first["hooks"][6].update(text="자세 흔들려도\n한 세트를 끝까지 채워?", yellow_phrase="자세 흔들려도")
+    first["hooks"][8].update(text="5회째 느려진\n푸쉬업은 몇 회 더 할까?", yellow_phrase="5회째 느려진")
+    assert [len(first["hooks"][i]["text"]) for i in (6, 8)] == [21, 22]
     replacement = draft("변경")
     for index in (6, 8):
         replacement["hooks"][index] = copy.deepcopy(first["hooks"][index])
@@ -74,14 +75,14 @@ def test_real_16_and_17_character_failures_keep_approved_hooks_and_map_indexes(t
                 return copy.deepcopy(first)
             feedback = repair_feedback(prompt)
             assert [item["keep"] for item in feedback] == [i in valid_indexes for i in range(10)]
-            for index, length in ((6, 16), (8, 17)):
+            for index, length in ((6, 21), (8, 22)):
                 assert str(length) in feedback[index]["feedback"]
-                assert "15" in feedback[index]["feedback"]
+                assert "15~20자" in feedback[index]["feedback"]
             return copy.deepcopy(replacement)
         review_round += 1
         candidates = review_candidates(prompt, schema, 8)
         assert [item["text"] for item in candidates] == [first["hooks"][i]["text"] for i in valid_indexes]
-        assert all(len(item["text"]) <= 15 for item in candidates)
+        assert all(15 <= len(item["text"]) <= 20 for item in candidates)
         return review(8, round_number=review_round)
 
     monkeypatch.setattr(ai, "call", call)
@@ -95,6 +96,8 @@ def test_real_16_and_17_character_failures_keep_approved_hooks_and_map_indexes(t
     assert set(decisions) == set(range(10))
     for index in (6, 8):
         assert decisions[index]["passes"] is False
+        assert all(decisions[index][key] is False for key in
+                   ("standalone_clear", "compelling_question", "payoff_supported"))
         assert decisions[index]["reason"] and decisions[index]["weakness"]
     assert decisions[7]["reason"] == "회차2 검수6"
     assert decisions[9]["reason"] == "회차2 검수7"
@@ -104,15 +107,15 @@ def test_real_16_and_17_character_failures_keep_approved_hooks_and_map_indexes(t
 
 def mixed_invalid_draft():
     result = draft()
-    result["hooks"][1].update(text="가" * 16, yellow_phrase="가")
-    result["hooks"][2].update(text="나" * 17, yellow_phrase="나")
-    result["hooks"][3].update(text="첫줄\n둘째\n셋째", yellow_phrase="첫줄")
-    result["hooks"][4].update(text="강조 오류", yellow_phrase="없는 구절")
+    result["hooks"][1].update(text="가" * 21, yellow_phrase="가")
+    result["hooks"][2].update(text="나" * 14, yellow_phrase="나")
+    result["hooks"][3].update(text="첫줄 운동을\n언제 멈출까\n셋째", yellow_phrase="첫줄")
+    result["hooks"][4].update(text="강조 오류 운동을 언제 멈출까요", yellow_phrase="없는 구절")
     result["hooks"][5].update(text="", yellow_phrase="")
-    result["hooks"][6].update(text=" 앞뒤 공백 ", yellow_phrase="공백")
+    result["hooks"][6].update(text=" 앞뒤 공백 운동을 언제 멈출까 ", yellow_phrase="공백")
     result["hooks"][7] = copy.deepcopy(result["hooks"][0])
-    result["hooks"][8].update(text="강조 누락", yellow_phrase="")
-    result["hooks"][9].update(text="다" * 16, yellow_phrase="다")
+    result["hooks"][8].update(text="강조 누락 운동을 언제 멈출까요", yellow_phrase="")
+    result["hooks"][9].update(text="다" * 22, yellow_phrase="다")
     return result
 
 
@@ -149,7 +152,7 @@ def test_all_format_errors_still_fail_without_independent_review(tmp_path, monke
     original = copy.deepcopy(project)
     invalid = draft()
     for i, item in enumerate(invalid["hooks"]):
-        item.update(text="가" * 15 + str(i), yellow_phrase="가")
+        item.update(text="가" * 20 + str(i), yellow_phrase="가")
     calls = []
 
     def call(ctx, prompt, schema, *args, **kwargs):
@@ -158,7 +161,7 @@ def test_all_format_errors_still_fail_without_independent_review(tmp_path, monke
         if len(calls) == 2:
             feedback = repair_feedback(prompt)
             assert not any(item["keep"] for item in feedback)
-            assert all("16" in item["feedback"] for item in feedback)
+            assert all("21" in item["feedback"] for item in feedback)
         return copy.deepcopy(invalid)
 
     monkeypatch.setattr(ai, "call", call)
@@ -174,7 +177,7 @@ def test_malformed_reduced_review_is_rejected_after_repair(tmp_path, monkeypatch
     original = copy.deepcopy(project)
     first = draft()
     for index in (2, 7):
-        first["hooks"][index].update(text="가" * 15 + str(index), yellow_phrase="가")
+        first["hooks"][index].update(text="가" * 20 + str(index), yellow_phrase="가")
     calls = []
 
     def call(ctx, prompt, schema, *args, **kwargs):

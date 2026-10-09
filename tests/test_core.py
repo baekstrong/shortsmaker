@@ -315,7 +315,7 @@ def test_hook_refresh_preserves_confirmed_until_explicit_replacement(tmp_path, m
     assert store.load(p['id'])['clips'][0]['hook']=='기존 문구'
     service.hooks(ctx,p['id'],dict(replace_selected=True))
     c=store.load(p['id'])['clips'][0]
-    assert c['hook']=='새 문구' and not c['confirmed'] and c['hook_version']==4
+    assert c['hook']=='새 문구' and not c['confirmed'] and c['hook_version']==5
     assert c['hook_analysis']['content_evidence']=='근거'
     p=service.edit(p['id'],dict(action='undo'))
     assert p['clips'][0]['hook']=='기존 문구' and p['clips'][0]['confirmed']
@@ -323,8 +323,8 @@ def test_hook_refresh_preserves_confirmed_until_explicit_replacement(tmp_path, m
 
 def test_hook_selection_uses_exact_text_not_inconsistent_index():
     from shortsmaker import ai
-    result=dict(hooks=[dict(text=f'후보 {i}',yellow_phrase='후보') for i in range(10)],
-                recommended_index=2,recommended_text='후보 1',reason='선택 이유')
+    result=dict(hooks=[dict(text=f'후보 {i} 운동을 끝내는 기준은?',yellow_phrase='후보') for i in range(10)],
+                recommended_index=2,recommended_text='후보 1 운동을 끝내는 기준은?',reason='선택 이유')
     assert ai.validate_hooks(result)['recommended_index']==1
     result['recommended_text']='후보에 없는 문구'
     with pytest.raises(ValueError):ai.validate_hooks(result)
@@ -451,12 +451,25 @@ def test_split_preserves_hook_and_frames_then_delete_undo(tmp_path):
     assert p['clips'][0]['id'] == back['id']
 
 
-@pytest.mark.parametrize("text,valid", [("가" * 15, True), ("가" * 16, False), ("가" * 14 + "?", True), ("가" * 14 + " ?", False)])
+@pytest.mark.parametrize("text,valid", [
+    ("가" * 14, False), ("가" * 15, True), ("가" * 20, True), ("가" * 21, False),
+    ("가" * 14 + "?", True), ("가" * 18 + " ?", True), ("가" * 19 + " ?", False),
+    ("가" * 7 + "\n" + "가" * 7, True),
+    ("가" * 9 + "\n" + "가" * 10, True),
+    ("가" * 10 + "\n" + "가" * 10, False),
+])
 def test_generated_hook_length_limit(text, valid):
     from shortsmaker import ai
     result = dict(hooks=[dict(text=text, yellow_phrase='가')], recommended_text=text)
     if valid:
         assert ai.validate_hooks(result)['hooks'][0]['text'] == text
     else:
-        with pytest.raises(ValueError, match='15자'):
+        with pytest.raises(ValueError, match='15~20자'):
             ai.validate_hooks(result)
+
+
+@pytest.mark.parametrize("text", ["자세 흔들려도\n한 세트 채워?", "5회째 느려진\n푸쉬업은 몇 회?"])
+def test_previously_rejected_16_and_17_character_hooks_fit_new_range(text):
+    from shortsmaker import ai
+    assert len(text) in (16, 17)
+    ai.validate_hook_candidates([dict(text=text, yellow_phrase=text.splitlines()[0])])
