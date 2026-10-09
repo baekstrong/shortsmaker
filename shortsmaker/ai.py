@@ -271,15 +271,49 @@ summary에는 무엇을 남기고 무엇을 덜어냈는지 한국어로 짧게 
     return result
 
 
+def hook_candidate_errors(hooks):
+    errors, seen = {}, set()
+    for index, hook in enumerate(hooks):
+        text, yellow = hook.get("text"), hook.get("yellow_phrase")
+        if not isinstance(text, str) or not text.strip():
+            errors[index] = "문구가 비어 있습니다."
+            continue
+        problems = []
+        if text != text.strip():
+            problems.append("문구 앞뒤 공백을 제거하세요.")
+        if len(text) > 15:
+            problems.append(f"현재 {len(text)}자입니다. 공백·문장부호·줄바꿈 포함 15자 이내로 줄이세요.")
+        if len(text.splitlines()) > 2:
+            problems.append("최대 두 줄로 작성하세요.")
+        if text in seen:
+            problems.append("앞 후보와 같은 문구입니다. 다른 표현으로 작성하세요.")
+        if not isinstance(yellow, str) or not yellow or yellow not in text:
+            problems.append("강조 구절은 문구에 그대로 포함된 비어 있지 않은 연속 구절이어야 합니다.")
+        if problems:
+            errors[index] = " ".join(problems)
+        else:
+            seen.add(text)
+    return errors
+
+
 def validate_hook_candidates(hooks):
-    if any(not isinstance(h.get("text"), str) or not h["text"].strip()
-           or h["text"] != h["text"].strip() or len(h["text"]) > 15
-           or len(h["text"].splitlines()) > 2 for h in hooks):
-        raise ValueError("AI 후킹 문구는 공백·문장부호 포함 15자 이내, 최대 두 줄이어야 합니다.")
-    if len({h["text"] for h in hooks}) != len(hooks):
-        raise ValueError("같은 후킹 후보가 반복되었습니다. 서로 다른 문구를 생성해 주세요.")
-    if any(not h.get("yellow_phrase") or h["yellow_phrase"] not in h["text"] for h in hooks):
-        raise ValueError("AI 강조 구절이 문구와 일치하지 않습니다. 후킹을 다시 생성해 주세요.")
+    errors = hook_candidate_errors(hooks)
+    if errors:
+        detail = " ".join(f"후보 {i + 1}: {error}" for i, error in errors.items())
+        raise ValueError("AI 후킹 문구 형식 오류: " + detail)
+
+
+def hook_review_schema(count):
+    if count == HOOK_CANDIDATE_COUNT:
+        return HOOK_REVIEW_SCHEMA
+    schema = json.loads(json.dumps(HOOK_REVIEW_SCHEMA))
+    reviews = schema["properties"]["reviews"]
+    reviews.update(minItems=count, maxItems=count)
+    reviews["items"]["properties"]["index"]["maximum"] = count - 1
+    selected = schema["properties"]["selected_indices"]
+    selected["maxItems"] = count
+    selected["items"]["maximum"] = count - 1
+    return schema
 
 
 def validate_hook_review(review, count, require_ten=True):
@@ -358,21 +392,35 @@ yellow_phrase는 text에 그대로 포함된 비어 있지 않은 연속 구절�
                 raise ValueError("검수할 후킹 후보10개를 생성해 주세요.")
             for index, candidate in retained.items():
                 draft["hooks"][index] = candidate
-            validate_hook_candidates(draft["hooks"])
-            candidates = [dict(index=i, text=h["text"]) for i, h in enumerate(draft["hooks"])]
-            review_prompt = f"""처음 보는 시청자의 입장에서 후킹10개를 엄격히 검수하는 독립 편집자입니다. 후킹 편집 기준 버전4.
+            errors = hook_candidate_errors(draft["hooks"])
+            valid_indexes = [i for i in range(len(draft["hooks"])) if i not in errors]
+            if not valid_indexes:
+                validate_hook_candidates(draft["hooks"])
+            candidates = [dict(index=i, text=draft["hooks"][original]["text"])
+                          for i, original in enumerate(valid_indexes)]
+            review_prompt = f"""처음 보는 시청자의 입장에서 후킹{len(candidates)}개를 엄격히 검수하는 독립 편집자입니다. 후킹 편집 기준 버전4.
 작성자의 표현 의도·평가·추천은 제공되지 않았습니다. 문구 자체와 원본 근거로 판단하세요. 후보 순서에 우열은 없습니다.
 {rules}
 약한 문구를 그럴듯하게 정당화하지 마세요. 모든 후보의 장점을 찾는 것이 아니라 이해/시청 이유/내용 일치/실행 오해를 확인하고 부족하면 탈락시키는 작업입니다.
 후보마다 index와 passes, 구체적인 reason 및 weakness를 각각 짧은 한 문장으로 적으세요. 약점이 없다면 weakness에 '큰 약점 없음'을 적되 설명/맥락/전문용어 문제를 다시 확인하세요.
-전체10개를 빠짐없이 한 번씩 검수하세요. 표현을 새로 쓰거나 고치지 마세요.
+전체{len(candidates)}개를 빠짐없이 한 번씩 검수하세요. 표현을 새로 쓰거나 고치지 마세요.
 selected_indices에는 통과한 후보의 index를 좋은 순서대로 적으세요. 10개가 안 되면 통과한 수만 반환하세요. 개수를 채우려고 기준을 낮추지 마세요. 같은 사실을 다른 자연스러운 표현으로 전달하는 것은 탈락 이유가 아닙니다.
 첫 후보가 최우선 추천입니다. reason에는 최우선 후보가 다른 후보보다 왜 볼 이유를 더 선명하게 만드는지와 남는 약점을 짧게 적으세요. 조회수나 시청 유지 성과를 보장하지 마세요.
 {evidence}
 후보 문구: {json.dumps(candidates, ensure_ascii=False)}"""
-            review = call(ctx, review_prompt, HOOK_REVIEW_SCHEMA, cache_dir,
-                          project["model"], project["effort"], fresh=fresh, images=images)
-            selected = validate_hook_review(review, len(candidates), require_ten=not attempt)
+            subset_review = call(ctx, review_prompt, hook_review_schema(len(candidates)), cache_dir,
+                                 project["model"], project["effort"], fresh=fresh, images=images)
+            validate_hook_review(subset_review, len(candidates), require_ten=False)
+            # Restore original indexes so retained candidates and saved review evidence agree.
+            review = dict(
+                reviews=sorted(
+                    [dict(r, index=valid_indexes[r["index"]]) for r in subset_review["reviews"]]
+                    + [dict(index=i, passes=False, reason=error, weakness=error)
+                       for i, error in errors.items()], key=lambda r: r["index"]),
+                selected_indices=[valid_indexes[i] for i in subset_review["selected_indices"]],
+                reason=subset_review["reason"],
+            )
+            selected = validate_hook_review(review, len(draft["hooks"]), require_ten=not attempt)
             if not selected:
                 raise ValueError("독립 검수를 통과한 후킹이 없습니다. 기존 문구를 보존합니다.")
         except ValueError as exc:
@@ -387,10 +435,11 @@ selected_indices에는 통과한 후보의 index를 좋은 순서대로 적으�
                     pass
             retained = {i: dict(h) for i, h in enumerate(draft["hooks"])
                         if decisions.get(i, {}).get("passes")}
+            errors = hook_candidate_errors(draft["hooks"])
             repairs = [dict(index=i, text=h.get("text", ""), yellow_phrase=h.get("yellow_phrase", ""),
                             keep=i in retained,
                             feedback="통과한 원문과 강조 유지" if i in retained else
-                            decisions.get(i, {}).get("weakness", str(exc)))
+                            errors.get(i, decisions.get(i, {}).get("weakness", str(exc))))
                        for i, h in enumerate(draft["hooks"])]
             feedback = ("\n이전 결과 오류: " + str(exc)
                         + "\n이전 후보와 보완 지시: " + json.dumps(repairs, ensure_ascii=False)
