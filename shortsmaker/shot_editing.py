@@ -58,7 +58,7 @@ def refresh_shots(shots, times):
             # A fractional trim starts inside the preceding decoded frame.
             # Keep its PTS so frame stepping can still return to that image.
             previous = bisect_left(times, shot["start"]) - 1
-            if previous >= 0:
+            if previous >= 0 and (not frames or frames[0] > shot["start"]):
                 frames.insert(0, times[previous])
         shot["frame_times"] = frames
         shot["time"] = max(shot["start"], frames[len(frames) // 2]) if frames else (shot["start"] + shot["end"]) / 2
@@ -122,6 +122,23 @@ def edit_shot(clip, metadata, action, body):
 
 
 def trim_shots(clip):
-    """A changed short range must never retain a stale, partly detected timeline."""
-    clip.pop("source_shots", None)
-    clip.pop("source_shots_manual", None)
+    """Keep known cuts on a shorter range; an expansion needs fresh coverage."""
+    shots = clip.get("source_shots") or []
+    if (not shots or clip["start"] < shots[0]["start"]
+            or clip["end"] > shots[-1]["end"]):
+        clip.pop("source_shots", None)
+        clip.pop("source_shots_manual", None)
+        return
+    times = sorted({t for shot in shots for t in shot.get("frame_times", [])})
+    trimmed = [dict(shot, start=max(clip["start"], shot["start"]),
+                    end=min(clip["end"], shot["end"]))
+               for shot in shots if shot["end"] > clip["start"] and shot["start"] < clip["end"]]
+    original = {shot["id"]: shot for shot in shots}
+    refresh_shots(trimmed, times)
+    for shot in trimmed:
+        before = original[shot["id"]]
+        if "boundary_kind" in before:
+            shot["boundary_kind"] = before["boundary_kind"]
+        else:
+            shot.pop("boundary_kind", None)
+    clip["source_shots"] = trimmed

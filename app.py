@@ -211,6 +211,13 @@ def create_app(data_dir=None):
             media.information_image(service.source(p), s["time"], path)
         return send_file(path, conditional=True)
 
+    @app.get("/api/projects/<pid>/timeline.jpg")
+    def timeline_thumbnail(pid):
+        p = store.load(pid)
+        path = media.timeline_thumbnail(service.source(p), request.args.get("time"),
+                                        p["metadata"], store.folder(pid) / "timeline-thumbnails")
+        return send_file(path, conditional=True)
+
     @app.get("/api/projects/<pid>/clips/<cid>/shots/<sid>.jpg")
     def shot_thumbnail(pid, cid, sid):
         p = store.load(pid)

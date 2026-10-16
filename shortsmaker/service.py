@@ -148,10 +148,11 @@ class Service:
                 p.update(source=str(path), metadata=metadata)
             return self.store.change(pid, update)
 
-    def selected(self, p, args):
+    def selected(self, p, args, *, include_excluded=False):
         ids = args.get("clip_ids")
         result = [
-            c for c in p["clips"] if c["included"] and (ids is None or c["id"] in ids)
+            c for c in p["clips"]
+            if (c["included"] or include_excluded) and (ids is None or c["id"] in ids)
         ]
         if not result:
             raise ValueError("작업할 쇼츠를 선택해 주세요.")
@@ -308,7 +309,9 @@ class Service:
 
         p = self.store.load(pid)
         self.source(p)
-        clips = self.selected(p, args)
+        # Inclusion controls batch/export work. A directly selected short must
+        # remain editable, including its original cuts, while excluded.
+        clips = self.selected(p, args, include_excluded=args.get("clip_ids") is not None)
         for i, clip in enumerate(clips):
             ctx.progress("원본 컷 확인 · " + clip["title"], i * 100 / len(clips))
             folder = self.store.folder(pid) / "frames" / clip["id"]
@@ -324,7 +327,9 @@ class Service:
                 if not c.get("source_shots_manual"):
                     c["source_shots"] = result
 
-            self.store.change(pid, save, revision=p["revision"], history=True)
+            # Filling cuts after a trim is derived data, not another user edit.
+            self.store.change(pid, save, revision=p["revision"],
+                              history=not args.get("automatic", False))
             p = self.store.load(pid)
 
     def encode(self, ctx, pid, args):
@@ -518,10 +523,14 @@ class Service:
                 )
                 if bounds:
                     c.update(confirmed=False)
-                    trim_shots(c)
                     c.pop("content_edit_version", None)
                     changes["confirmed"] = False
                 c.update(changes)
+                if bounds:
+                    # Validate before comparing the new times to saved shot bounds.
+                    candidate = dict(c, cuts=[], frame_overrides=[])
+                    validate_clip(candidate, p["metadata"]["duration"])
+                    trim_shots(c)
             else:
                 raise ValueError("지원하지 않는 편집입니다.")
             if action in ("split", "merge", "update"):

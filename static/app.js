@@ -36,6 +36,7 @@ let selectedRegionId = null;
 let selectedShotId = null;
 let shotTimelineKey = "", shotFrameCache = { key:"", times:[] };
 let shotScrub = null;
+let clipInteraction = null, clipTimelineKey = "", sourcePreview = false, selectFirstShot = true;
 let presentedTime = null;
 let trimDraft = null;
 let frameDraft = null;
@@ -220,6 +221,9 @@ async function refresh() {
   }
 }
 function selectProject(id) {
+  cancelClipInteraction();
+  sourcePreview = false;
+  selectFirstShot = true;
   flushTitleDraft();
   cancelDrag();
   selectedRegionId = null;
@@ -286,7 +290,7 @@ function render() {
   $("empty").hidden = !!p;
   $("workspace").hidden = !p;
   $("settings-button").disabled = !p;
-  if (!p) return;
+  if (!p) { cancelClipInteraction(); return; }
   $("project-name").textContent = p.name;
   $("project-meta").textContent =
     `${p.metadata.width} × ${p.metadata.height} · ${time(p.metadata.duration)} · 원본 보존 · ${p.model}`;
@@ -294,7 +298,8 @@ function render() {
   $("summary").textContent =
     p.summary ||
     "내용 분석을 시작하면 AI가 구간을 제안합니다. 직접 추가할 수도 있습니다.";
-  if (!clip()) cid = p.clips[0]?.id;
+  if (!clip()) { cid = p.clips[0]?.id; selectFirstShot = true; }
+  renderClipTimeline();
   $("clips").innerHTML = p.clips
     .map(
       (c, i) =>
@@ -322,6 +327,7 @@ function render() {
     };
   }
   updatePreview();
+  if (selectFirstShot && !sourceShots().length) ensureClipShots();
 }
 function fieldValue(id, value) {
   if (document.activeElement !== $(id)) $(id).value = value;
@@ -339,7 +345,7 @@ function renderEditor() {
   if (!c) return;
   const v = $("video");
   if (
-    videoProject === pid &&
+    !sourcePreview && videoProject === pid &&
     v.readyState > 0 &&
     (v.currentTime < c.start || v.currentTime > c.end)
   )
@@ -396,7 +402,7 @@ function renderEditor() {
     else el.disabled = false;
   $("download").disabled = busy() || !c.render_current;
 }
-let titleRequest = 0, titleURL = "", titleObjectURL = null, titleRetryAt = 0;
+let titleRequest = 0, titleURL = "", titleLoadedURL = "", titleObjectURL = null, titleRetryAt = 0;
 async function loadTitlePreview(force = false) {
   if (!clip()) return;
   const url = `/api/projects/${pid}/clips/${cid}/title.png?v=${project().revision}`;
@@ -420,8 +426,9 @@ async function loadTitlePreview(force = false) {
     if (request !== titleRequest) { URL.revokeObjectURL(objectURL); return; }
     if (titleObjectURL) URL.revokeObjectURL(titleObjectURL);
     titleObjectURL = objectURL;
+    titleLoadedURL = url;
     $("title-image").src = objectURL;
-    $("title-image").hidden = false;
+    $("title-image").hidden = sourcePreview;
     titleRetryAt = 0;
   } catch (e) {
     if (request !== titleRequest) return;
@@ -455,7 +462,7 @@ setInterval(() => {
   if (titleRetryAt && Date.now() >= titleRetryAt) { titleRetryAt = 0; loadTitlePreview(true); }
 }, 1000);
 window.addEventListener("beforeunload", e => {
-  if (titleDrafts.size || trimDraft) { e.preventDefault(); e.returnValue = ""; }
+  if (titleDrafts.size || trimDraft || clipInteraction?.edge) { e.preventDefault(); e.returnValue = ""; }
 });
 function sourceFps() {
   const value = String(project()?.metadata?.fps || "30"), [n, d = "1"] = value.split("/");
@@ -520,6 +527,7 @@ function snapRegionTime(at) {
   return Math.max(c.start, Math.min(c.end, nearestFrame(value)));
 }
 function seekFrame(at, select = false) {
+  sourcePreview = false;
   const c = clip(), v = $("video");
   if (!c) return;
   v.pause();
@@ -560,6 +568,231 @@ function configureFrameInputs() {
     };
   }
 }
+// The overview uses absolute source time; the cut editor below uses clip-relative time.
+function selectClip(id) {
+  if (!project()?.clips.some(c => c.id === id)) return;
+  cancelClipInteraction();
+  flushTitleDraft();
+  cancelDrag();
+  endShotScrub();
+  selectedRegionId = selectedShotId = null;
+  trimDraft = null;
+  sourcePreview = false;
+  selectFirstShot = true;
+  cid = id;
+  $('clip-trim-status').textContent = '쇼츠 구간을 선택하면 아래에서 원본 컷마다 화면 구도를 조정할 수 있습니다.';
+  shownRevision = -1;
+  seekFrame(keptRanges(clip())[0].start);
+  render();
+  ensureClipShots();
+}
+const requestedClipShots = new Set();
+async function ensureClipShots() {
+  const c = clip();
+  if (!c || sourceShots().length || busy() || mutating || clipInteraction) return;
+  const key = `${pid}/${cid}/${c.start}/${c.end}`;
+  if (requestedClipShots.has(key)) return;
+  requestedClipShots.add(key);
+  const target = {pid, cid};
+  try {
+    flushTitleDraft();
+    await editQueue;
+    if (pid !== target.pid || cid !== target.cid || busy() || clipInteraction) { requestedClipShots.delete(key); return; }
+    await run('shots', {clip_ids:[target.cid],automatic:true});
+  } catch (error) { toast(`원본 컷을 찾지 못했습니다. 원본 컷 찾기로 다시 시도하세요. ${error.message}`); }
+}
+function compactClipOffset(c, duration, width) {
+  return c.start/duration*width+76 > width ? -75 : 9;
+}
+function overviewRows(clips, duration, width) {
+  const ends = [];
+  return clips.map((c, index) => ({c,index})).sort((a,b) => a.c.start-b.c.start || a.index-b.index).map(item => {
+    // Separate overlapping clips, including handles on very short adjacent clips.
+    const units = duration/Math.max(1,width);
+    const compact = (item.c.end-item.c.start)/units < 42;
+    const offset = compact ? compactClipOffset(item.c,duration,width) : 0;
+    const left = Math.min(item.c.start,item.c.start+offset*units);
+    let row = ends.findIndex(end => end <= left);
+    if (row < 0) row = ends.length;
+    ends[row] = Math.max(item.c.end,item.c.start+(compact ? offset+66 : 76)*units);
+    return {...item,row};
+  });
+}
+function timelineImages(start, end, width, limit=24) {
+  const count = Math.max(1,Math.min(limit,Math.ceil(width/100)));
+  return Array.from({length:count},(_,i) => {
+    const at = Number((start+(end-start)*(i+.5)/count).toFixed(6));
+    return `<span class="timeline-thumb" title="${preciseTime(at)}"><img src="/api/projects/${pid}/timeline.jpg?time=${at}" alt="" loading="lazy" decoding="async" draggable="false"></span>`;
+  }).join('');
+}
+function renderClipTimeline() {
+  const p = project();
+  if (clipInteraction && (!p || clipInteraction.pid !== pid || clipInteraction.cid !== cid || busy() || mutating)) cancelClipInteraction();
+  $('clip-timeline-editor').hidden = !p;
+  if (!p) return;
+  const duration = p.metadata.duration, width = $('clip-timeline').clientWidth || 600;
+  const c = clip();
+  $('clip-timeline-summary').textContent = `원본 전체 ${preciseTime(duration)} · 쇼츠 ${p.clips.length}개${c ? ` · 선택: 쇼츠 ${p.clips.indexOf(c)+1} · ${preciseTime(c.start)} ~ ${preciseTime(c.end)}` : ''}`;
+  if (clipInteraction) return;
+  const key = `${pid}/${cid}/${p.revision}/${busy()}/${width}`;
+  if (key === clipTimelineKey) return;
+  clipTimelineKey = key;
+  const tick = timelineTick(duration, width);
+  $('clip-ruler').innerHTML = Array.from({length:Math.floor(duration/tick)+1}, (_,i) => `<span style="left:${100*i*tick/duration}%">${time(i*tick)}</span>`).join('')+`<span class="clip-ruler-end">${time(duration)}</span>`;
+  const filmstripKey = `${pid}/${duration}/${Math.ceil(width/100)}`;
+  if ($('source-filmstrip').dataset.key !== filmstripKey) {
+    $('source-filmstrip').dataset.key = filmstripKey;
+    $('source-filmstrip').innerHTML = timelineImages(0,duration,width);
+  }
+  const rows = overviewRows(p.clips, duration, width);
+  $('clip-strip').style.height = `${Math.max(1,...rows.map(r=>r.row+1))*72}px`;
+  $('clip-strip').innerHTML = rows.map(({c,index,row}) => `<div class="clip-range${c.id===cid?' active':''}${!c.included?' excluded':''}${(c.end-c.start)/duration*width<42?' compact':''}" data-clip-id="${esc(c.id)}" style="left:${100*c.start/duration}%;width:${100*(c.end-c.start)/duration}%;top:${row*72+4}px;--compact-offset:${compactClipOffset(c,duration,width)}px" title="쇼츠 ${index+1} · ${esc(c.title)} · ${preciseTime(c.start)} ~ ${preciseTime(c.end)}">
+    <button class="clip-range-body" data-select-clip="${esc(c.id)}" aria-pressed="${c.id===cid}" aria-label="쇼츠 ${index+1} 선택: ${esc(c.title)}"><span class="clip-range-images" aria-hidden="true">${timelineImages(c.start,c.end,(c.end-c.start)/duration*width,8)}</span><span class="clip-range-caption"><span class="clip-range-label">쇼츠 ${index+1}${!c.included?' · 제외':''}</span><span class="clip-range-time">${(c.end-c.start).toFixed(1)}초</span></span></button>
+    <button class="clip-trim-handle" data-edge="start" aria-label="쇼츠 ${index+1} 시작 조정" title="드래그로 시작 조정 · 방향키로 한 프레임" ${busy()?'disabled':''}></button>
+    <button class="clip-trim-handle" data-edge="end" aria-label="쇼츠 ${index+1} 끝 조정" title="드래그로 끝 조정 · 방향키로 한 프레임" ${busy()?'disabled':''}></button></div>`).join('');
+}
+function sourceTimeAt(event) {
+  const rect = $('clip-timeline').getBoundingClientRect();
+  return Math.max(0,Math.min(project().metadata.duration, (event.clientX-rect.left)/Math.max(1,rect.width)*project().metadata.duration));
+}
+function snapSourceTime(at) {
+  const times = sourceFrameTimes();
+  const snapped = times.length && at >= times[0] && at <= times.at(-1) ? nearestFrame(at) : Math.round(at*sourceFps())/sourceFps();
+  return Number(Math.max(0,Math.min(project().metadata.duration,snapped)).toFixed(6));
+}
+function seekSource(at) {
+  const v = $('video');
+  sourcePreview = true;
+  v.pause();
+  presentedTime = null;
+  v.currentTime = Math.max(0,Math.min(project().metadata.duration-1e-6,at))+1e-6;
+  updatePreview(at);
+}
+function trimBounds(c, edge, at) {
+  const start = edge==='start' ? Math.max(0, Math.min(c.end-.1,at)) : c.start;
+  const end = edge==='end' ? Math.min(project().metadata.duration, Math.max(c.start+.1,at)) : c.end;
+  return {start:Number(start.toFixed(6)),end:Number(end.toFixed(6))};
+}
+function moveClipInteraction(event) {
+  const drag = clipInteraction;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  if (pid !== drag.pid || cid !== drag.cid || busy() || mutating) { cancelClipInteraction(); return; }
+  event.preventDefault();
+  if (drag.edge && !drag.moved && Math.abs(event.clientX-drag.startX)<1) return;
+  drag.moved = true;
+  const at = snapSourceTime(sourceTimeAt(event)-drag.offset);
+  if (!drag.edge) { seekSource(at); return; }
+  Object.assign(drag,trimBounds(drag.original,drag.edge,at));
+  const node = [...$('clip-strip').children].find(n=>n.dataset.clipId===drag.cid);
+  if (node) {
+    node.style.left = `${100*drag.start/project().metadata.duration}%`;
+    node.style.width = `${100*(drag.end-drag.start)/project().metadata.duration}%`;
+    node.querySelector('.clip-range-time').textContent = `${(drag.end-drag.start).toFixed(1)}초`;
+  }
+  $('clip-trim-status').textContent = `${preciseTime(drag.start)} ~ ${preciseTime(drag.end)} · ${(drag.end-drag.start).toFixed(3)}초 · 놓으면 저장`;
+  seekSource(drag[drag.edge]);
+}
+function releaseClipInteraction() {
+  const drag = clipInteraction;
+  clipInteraction = null;
+  if (drag && $('clip-timeline').hasPointerCapture(drag.pointerId)) $('clip-timeline').releasePointerCapture(drag.pointerId);
+  $('clip-timeline').classList.remove('trimming');
+  return drag;
+}
+function cancelClipInteraction(event) {
+  if (!clipInteraction || (event?.pointerId !== undefined && event.pointerId !== clipInteraction.pointerId)) return;
+  const drag = releaseClipInteraction();
+  if (drag.edge && drag.pid===pid && drag.cid===cid) seekFrame(Math.max(clip().start,Math.min(clip().end,drag.before)));
+  clipTimelineKey = '';
+  $('clip-trim-status').textContent = '';
+  renderClipTimeline();
+}
+async function saveClipBounds(drag) {
+  if (drag.start===drag.original.start && drag.end===drag.original.end) return;
+  flushTitleDraft();
+  await editQueue;
+  const c = state.projects.find(p=>p.id===drag.pid)?.clips.find(c=>c.id===drag.cid);
+  if (!c || c.start!==drag.original.start || c.end!==drag.original.end) throw Error('다른 편집으로 쇼츠 범위가 바뀌었습니다. 새 범위에서 다시 조정해 주세요.');
+  await edit('update',{changes:{start:drag.start,end:drag.end}}, {pid:drag.pid,cid:drag.cid});
+}
+async function finishClipInteraction(event) {
+  if (!clipInteraction || event.pointerId !== clipInteraction.pointerId) return;
+  moveClipInteraction(event);
+  const drag = releaseClipInteraction();
+  if (!drag) return;
+  if (!drag.edge) return;
+  try {
+    await saveClipBounds(drag);
+    if (pid===drag.pid && cid===drag.cid) {
+      selectedShotId = selectedRegionId = null;
+      selectFirstShot = true;
+      shownRevision = -1;
+      seekFrame(drag.edge==='start' ? clip().start : adjacentFrame(clip().end,-1));
+      render();
+      $('clip-trim-status').textContent = '길이를 저장했습니다. 되돌리기로 복원할 수 있습니다.';
+      ensureClipShots();
+    }
+  } catch (error) {
+    if (pid===drag.pid && cid===drag.cid) { seekFrame(drag.before); clipTimelineKey=''; render(); }
+    $('clip-trim-status').textContent = '저장하지 못했습니다. 기존 구간을 유지합니다.';
+    toast(error.message);
+  }
+}
+$('clip-strip').onclick = event => {
+  const button = event.target.closest('[data-select-clip]');
+  if (button) selectClip(button.dataset.selectClip);
+};
+$('clip-strip').onpointerdown = event => {
+  const handle = event.target.closest('[data-edge]');
+  if (!handle || event.button!==0 || event.isPrimary===false || busy() || mutating || clipInteraction) return;
+  event.preventDefault();
+  const id = handle.closest('[data-clip-id]').dataset.clipId;
+  if (id!==cid) selectClip(id);
+  const c = clip(), edge=handle.dataset.edge;
+  clipInteraction={pid,cid,edge,startX:event.clientX,moved:false,pointerId:event.pointerId,original:{start:c.start,end:c.end},start:c.start,end:c.end,before:previewTime(),offset:sourceTimeAt(event)-c[edge]};
+  $('clip-timeline').setPointerCapture(event.pointerId);
+  $('clip-timeline').classList.add('trimming');
+  $('clip-timeline-scroll').focus({preventScroll:true});
+  $('video').pause();
+};
+function startSourceScrub(event) {
+  if (!clip() || event.button!==0 || event.isPrimary===false || busy() || mutating || clipInteraction) return;
+  event.preventDefault();
+  clipInteraction={pid,cid,pointerId:event.pointerId,offset:event.currentTarget===$('clip-playhead') ? sourceTimeAt(event)-previewTime() : 0};
+  $('clip-timeline').setPointerCapture(event.pointerId);
+  moveClipInteraction(event);
+}
+$('clip-ruler').onpointerdown = startSourceScrub;
+$('source-filmstrip').onpointerdown = startSourceScrub;
+$('clip-playhead').onpointerdown = startSourceScrub;
+$('clip-timeline').onpointermove = moveClipInteraction;
+$('clip-timeline').onpointerup = finishClipInteraction;
+$('clip-timeline').onpointercancel = cancelClipInteraction;
+$('clip-timeline').onlostpointercapture = cancelClipInteraction;
+window.addEventListener('blur',()=>cancelClipInteraction());
+$('clip-timeline-scroll').onkeydown = safe(async event => {
+  if (event.key==='Escape') return cancelClipInteraction();
+  const handle = event.target.closest('[data-edge]');
+  if (!handle || !['ArrowLeft','ArrowRight'].includes(event.key) || busy() || mutating) return;
+  event.preventDefault();
+  const id = handle.closest('[data-clip-id]').dataset.clipId;
+  if (id!==cid) selectClip(id);
+  const c=clip(), edge=handle.dataset.edge, direction=event.key==='ArrowLeft'?-1:1;
+  const next = adjacentFrame(c[edge],direction);
+  const at = direction*(next-c[edge])>1e-6 ? next : snapSourceTime(c[edge]+direction/sourceFps());
+  const drag={pid,cid,original:{start:c.start,end:c.end},...trimBounds(c,edge,at)};
+  await saveClipBounds(drag);
+  if (pid!==drag.pid || cid!==drag.cid) return;
+  selectedShotId = selectedRegionId = null;
+  selectFirstShot = true;
+  shownRevision = -1;
+  seekFrame(edge==='start'?clip().start:adjacentFrame(clip().end,-1));
+  render();
+  const range = [...$('clip-strip').children].find(node=>node.dataset.clipId===cid);
+  range?.querySelector(`[data-edge="${edge}"]`)?.focus({preventScroll:true});
+  ensureClipShots();
+});
+
 function timelineTick(duration, width) {
   const target = Math.max(1/sourceFps(), duration*100/Math.max(1,width), duration/200);
   const power = Math.pow(10, Math.floor(Math.log10(target)));
@@ -570,13 +803,16 @@ function renderShotTimeline() {
   if (shotScrub && (!c || shotScrub.pid !== pid || shotScrub.cid !== cid || busy() || mutating)) endShotScrub();
   $("shot-editor").hidden = !c;
   if (!c) return;
-  if (selectedShotId && !shots.some(s => s.id === selectedShotId)) selectedShotId = null;
+  if (selectedShotId && !shots.some(s => s.id === selectedShotId)) {
+    selectedShotId = (shots.find(s => containsFrame(s,previewTime())) || shots[0])?.id || null;
+  }
+  if (selectFirstShot && shots.length) { selectedShotId = shots[0].id; selectFirstShot = false; }
   const disabled = busy() || mutating;
   $("detect-shots").disabled = disabled;
   $("detect-shots").textContent = c.source_shots_manual ? "원본 컷 확인" : shots.length ? "원본 컷 다시 찾기" : "원본 컷 찾기";
   $("detect-shots").title = c.source_shots_manual ? "직접 고친 컷 경계를 유지하고 미리보기를 확인합니다." : "원본 프레임을 비교해 장면 전환을 찾습니다.";
   $("shot-empty").hidden = !!shots.length;
-  $("shot-summary").textContent = shots.length ? `${shots.length}개 컷 · ${sourceFps().toFixed(3).replace(/0+$/, "").replace(/\.$/, "")} fps · 시간은 쇼츠 시작 기준` : "AI 분석 없이 장면 전환 검출";
+  $("shot-summary").textContent = `쇼츠 ${project().clips.indexOf(c)+1} · ${c.title} · ` + (shots.length ? `${shots.length}개 컷 · ${sourceFps().toFixed(3).replace(/0+$/, "").replace(/\.$/, "")} fps · 시간은 쇼츠 시작 기준` : "원본 컷을 찾으면 컷별로 구도를 조정할 수 있습니다.");
   const key = `${pid}/${cid}/${project().revision}/${$("shot-zoom").value}`;
   if (key !== shotTimelineKey) {
     shotTimelineKey = key;
@@ -608,7 +844,7 @@ function renderShotTimeline() {
     const first = button.dataset.shotBoundary === "start" && selectedIndex === 0;
     const last = button.dataset.shotBoundary === "end" && selectedIndex === shots.length-1;
     button.disabled = disabled || !selected || first || last;
-    button.title = first || last ? "쇼츠의 맨 앞·뒤 경계는 고정되어 있습니다." : "인접한 두 컷의 공통 경계를 이동합니다.";
+    button.title = first || last ? "위 전체 영상 타임라인에서 쇼츠의 양끝을 드래그하세요." : "인접한 두 컷의 공통 경계를 이동합니다.";
   }
   for (const id of ["previous-frame","next-frame","split-shot"]) $(id).disabled = disabled || (id === "split-shot" && !shots.length);
   $("previous-shot").disabled = disabled || !shots.length;
@@ -698,7 +934,7 @@ $("shot-timeline-scroll").onkeydown = event => {
 for (const button of document.querySelectorAll("[data-shot-align]")) button.onclick = safe(() => {
   if (editingShot()) return saveFrame({ ...editingFrame(), center:Number(button.dataset.shotAlign), ...(Number(button.dataset.shotAlign) === .5 ? {vertical:.5} : {}) });
 });
-$("shot-frame-controls").onclick = () => $("frame-scope").scrollIntoView({block:"center", behavior:"smooth"});
+$("shot-frame-controls").onclick = () => { $("frame-controls").scrollIntoView({block:"nearest", behavior:"smooth"}); $("zoom").focus({preventScroll:true}); };
 $("split-shot").onclick = safe(async () => {
   if (!clip() || busy() || mutating) return;
   const target = {pid,cid}, at = nearestFrame(previewTime());
@@ -847,9 +1083,17 @@ function updatePreview(at) {
     v = $("video");
   updateRegionTimeline();
   if (!p || !c) return;
-  const t = Math.max(c.start, Math.min(c.end, Number.isFinite(at) ? at : previewTime()));
+  const t = Math.max(sourcePreview ? 0 : c.start, Math.min(sourcePreview ? p.metadata.duration : c.end, Number.isFinite(at) ? at : previewTime()));
+  $("clip-playhead").style.left = `${100*t/p.metadata.duration}%`;
+  $("clip-playhead").hidden = false;
+  $("clip-playhead").setAttribute("aria-valuemin", "0");
+  $("clip-playhead").setAttribute("aria-valuemax", String(p.metadata.duration));
+  $("clip-playhead").setAttribute("aria-valuenow", String(t));
+  $("clip-playhead").setAttribute("aria-valuetext", preciseTime(t));
+  $("shot-playhead").hidden = sourcePreview && (t<c.start || t>=c.end);
+  $("title-image").hidden = sourcePreview || titleLoadedURL !== titleURL || !titleObjectURL;
   updateShotPlayhead(t);
-  const s = activeFrame(t);
+  const s = sourcePreview && (t<c.start || t>=c.end) ? {zoom:1,center:.5,vertical:.5} : activeFrame(t);
   const { z, sw, sh, x, y } = frameGeometry(s);
   const ratio = $("preview").clientWidth / 1080;
   v.style.width = sw * ratio + "px";
@@ -857,11 +1101,11 @@ function updatePreview(at) {
   v.style.left = -x * ratio + "px";
   v.style.top = y * ratio + "px";
   $("seek").step = "any";
-  $("seek").min = c.start;
-  $("seek").max = c.end;
-  $("seek").value = Math.max(c.start, Math.min(c.end, t));
+  $("seek").min = sourcePreview ? 0 : c.start;
+  $("seek").max = sourcePreview ? p.metadata.duration : c.end;
+  $("seek").value = t;
   $("time").textContent =
-    `${preciseTime(editedAt(c, t))} / ${preciseTime(editedDuration(c))} · 원본 ${preciseTime(t)}`;
+    sourcePreview ? `원본 ${preciseTime(t)} / ${preciseTime(p.metadata.duration)}` : `${preciseTime(editedAt(c, t))} / ${preciseTime(editedDuration(c))} · 원본 ${preciseTime(t)}`;
   $("frame-info").textContent =
     `${Math.round(z * 100)}% · ${previewOverrides().some(f => containsFrame(f, t)) ? "이 프레임에 적용된 위치" : c.manual_frame ? "전체 기본 위치" : "중앙 고정"}`;
   const region = editingRegion(), shot = editingShot();
@@ -966,17 +1210,7 @@ $("clips").onclick = safe(async (e) => {
     return;
   }
   const card = e.target.closest("[data-clip]");
-  if (card) {
-    flushTitleDraft();
-    cancelDrag();
-    selectedRegionId = null;
-    selectedShotId = null;
-    trimDraft = null;
-    cid = card.dataset.clip;
-    shownRevision = -1;
-    $("video").currentTime = keptRanges(clip())[0].start;
-    render();
-  }
+  if (card) selectClip(card.dataset.clip);
 });
 $("clips").onkeydown = (e) => {
   if (e.key === "Enter") e.target.click();
@@ -1175,6 +1409,7 @@ for (const id of ["zoom", "center"]) {
   $(id).onchange = safe(() => saveFrame({ ...editingFrame(), [id]: Number($(id).value) }));
 }
 function inspectInformation(index) {
+  $("frame-details").open = true;
   const s = informationRegions()[index];
   selectedRegionId = s.id || null;
   selectedShotId = null;
@@ -1280,16 +1515,15 @@ $("play").onclick = safe(async () => {
     v = $("video");
   if (!c) return;
   if (v.paused) {
-    if (v.currentTime < c.start || v.currentTime >= c.end)
-      v.currentTime = keptRanges(c)[0].start;
-    v.currentTime = playbackStart(c, v.currentTime);
+    if (sourcePreview) { if (v.currentTime >= project().metadata.duration) v.currentTime = 0; }
+    else { v.currentTime = playbackStart(c, v.currentTime); }
     await v.play();
   } else v.pause();
 });
 let playbackFrame = null, videoFrameRequest = null, videoFrameGeneration = 0;
 function checkPlayback() {
   const c = clip(), v = $("video");
-  if (!c || v.paused || v.seeking) return;
+  if (!c || v.paused || v.seeking || sourcePreview) return;
   const ranges = keptRanges(c), next = ranges.find(r => v.currentTime < r.end);
   if (!next) { v.pause(); return; }
   if (v.currentTime < next.start) v.currentTime = next.start;
@@ -1337,8 +1571,9 @@ $("video").addEventListener("emptied", () => {
   if (videoFrameRequest !== null) $("video").cancelVideoFrameCallback?.(videoFrameRequest);
   videoFrameRequest = null;
 });
-$("seek").oninput = () => { seekFrame(Number($("seek").value), false); };
+$("seek").oninput = () => { sourcePreview ? seekSource(Number($("seek").value)) : seekFrame(Number($("seek").value), false); };
 new ResizeObserver(updatePreview).observe($("preview"));
+new ResizeObserver(() => { clipTimelineKey=""; renderClipTimeline(); }).observe($("clip-timeline-scroll"));
 new ResizeObserver(() => { shotTimelineKey = ""; renderShotTimeline(); }).observe($("shot-timeline-scroll"));
 $("content-cuts").onclick = safe(async (event) => {
   const button = event.target.closest("[data-restore-cut]");

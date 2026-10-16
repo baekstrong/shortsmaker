@@ -8,6 +8,8 @@ import subprocess
 import unicodedata
 import os
 import tempfile
+import threading
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
@@ -20,6 +22,8 @@ FONT_CANDIDATES = [
     Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),
     Path("/System/Library/Fonts/Supplemental/AppleGothic.ttf"),
 ]
+_TIMELINE_SLOTS = threading.BoundedSemaphore(2)
+_TIMELINE_LOCKS = [threading.Lock() for _ in range(64)]
 
 
 def existing_path(value):
@@ -153,6 +157,78 @@ def information_image(source, at, path):
             Path(temporary).unlink(missing_ok=True)
     finally:
         cap.release()
+
+
+def _timeline_frame(source, at, duration, fps):
+    import cv2
+
+    cap = cv2.VideoCapture(str(source))
+    try:
+        if not cap.isOpened():
+            raise ValueError("타임라인 미리보기 영상을 열 수 없습니다.")
+        # A duration is the exclusive end, so seeking to it can return EOF.
+        target = min(at, max(0, duration - 1 / fps))
+        cap.set(cv2.CAP_PROP_POS_MSEC, target * 1000)
+        ok, frame = cap.read()
+        if not ok:
+            # Some containers seek just beyond the last decoded frame. Read
+            # the final second sequentially and retain its last valid image.
+            cap.set(cv2.CAP_PROP_POS_MSEC, max(0, target - 1) * 1000)
+            frame = None
+            for _ in range(min(600, max(120, int(fps * 2) + 5))):
+                ok, candidate = cap.read()
+                if not ok:
+                    break
+                frame = candidate
+                if cap.get(cv2.CAP_PROP_POS_MSEC) / 1000 >= target:
+                    break
+        if frame is None:
+            raise ValueError("타임라인 미리보기를 읽지 못했습니다.")
+        return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    finally:
+        cap.release()
+
+
+def timeline_thumbnail(source, at, metadata, folder):
+    """Cache a small source image independently of project edits/history."""
+    try:
+        at = float(at)
+    except (TypeError, ValueError):
+        raise ValueError("타임라인 시각을 확인해 주세요.") from None
+    duration = metadata["duration"]
+    if not math.isfinite(at) or not 0 <= at <= duration:
+        raise ValueError("타임라인 시각은 원본 영상 범위 안이어야 합니다.")
+    try:
+        fps = float(Fraction(str(metadata.get("fps", "30/1"))))
+        if not math.isfinite(fps) or fps <= 0:
+            raise ValueError
+    except (ValueError, ZeroDivisionError):
+        fps = 30
+    source = Path(source).resolve()
+    stat = source.stat()
+    signature = dict(version=1, source=str(source), size=stat.st_size,
+                     mtime_ns=stat.st_mtime_ns, ctime_ns=stat.st_ctime_ns,
+                     time=round(at, 6), duration=duration, fps=fps)
+    key = hashlib.sha256(json.dumps(signature, sort_keys=True).encode()).hexdigest()
+    path = Path(folder) / f"{key}.jpg"
+    if path.is_file():
+        return path
+    # A fixed lock pool bounds memory while coalescing requests for one image.
+    with _TIMELINE_LOCKS[int(key[:8], 16) % len(_TIMELINE_LOCKS)]:
+        if path.is_file():
+            return path
+        with _TIMELINE_SLOTS:
+            image = _timeline_frame(source, at, duration, fps)
+            image.thumbnail((320, 180), Image.Resampling.LANCZOS)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temporary = tempfile.mkstemp(suffix=".jpg", dir=path.parent)
+            try:
+                with os.fdopen(fd, "wb") as output:
+                    image.save(output, format="JPEG", quality=72)
+                os.replace(temporary, path)
+            finally:
+                Path(temporary).unlink(missing_ok=True)
+    return path
 
 
 def title_image(text, yellow, path, font_size=80):
