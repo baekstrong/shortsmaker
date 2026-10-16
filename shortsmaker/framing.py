@@ -3,9 +3,8 @@
 import hashlib
 import math
 from pathlib import Path
-import cv2
 from PIL import Image, ImageDraw
-from . import ai
+from . import ai, shots
 from .media import geometry
 from .parallel import parallel_tasks
 
@@ -13,61 +12,20 @@ from .parallel import parallel_tasks
 def sample_scenes(ctx, source, clip, folder):
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
-    cap = cv2.VideoCapture(source)
-    if not cap.isOpened():
-        raise ValueError("구도 분석용 영상을 열 수 없습니다.")
-    cuts = [clip["start"]]
-    previous = None
-    try:
-        # Inspect every second for cuts. Color-distribution plus pixel changes avoid most motion cuts.
-        t = clip["start"]
-        while t < clip["end"]:
-            ctx.check()
-            cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
-            ok, frame = cap.read()
-            if not ok:
-                t += 1
-                continue
-            small = cv2.resize(frame, (160, 90))
-            hist = cv2.calcHist([small], [0, 1, 2], None, [8, 8, 8], [0, 256] * 3)
-            cv2.normalize(hist, hist)
-            if previous is not None:
-                diff = cv2.compareHist(previous[0], hist, cv2.HISTCMP_BHATTACHARYYA)
-                motion = cv2.absdiff(previous[1], small).mean()
-                if diff > 0.48 and motion > 35 and t - cuts[-1] >= 2:
-                    cuts.append(t)
-            previous = (hist, small)
-            t += 1
-        cuts.append(clip["end"])
-        scenes = [{"start": a, "end": b} for a, b in zip(cuts, cuts[1:]) if b > a]
-        frames = []
-        for scene_i, scene in enumerate(scenes):
-            length = scene["end"] - scene["start"]
-            # Sample at most 2s apart, including brief overlays and explanatory graphics.
-            count = max(2, math.ceil(length / 2) + 1)
-            for j in range(count):
-                t = scene["start"] + min(
-                    length - 0.05, max(0.05, length * j / (count - 1))
-                )
-                cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
-                ok, frame = cap.read()
-                if not ok:
-                    continue
-                path = folder / f"frame-{len(frames):03}.jpg"
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                image = Image.fromarray(frame)
-                image.thumbnail((960, 540))
-                image.save(path, quality=88)
-                frames.append(
-                    dict(index=len(frames), scene=scene_i, time=t, path=str(path))
-                )
-        return scenes, frames
-    finally:
-        cap.release()
+    if clip.get("source_shots_manual") and clip.get("source_shots"):
+        scenes = [dict(s) for s in clip["source_shots"]]
+        shots.ensure_thumbnails(ctx, source, clip, scenes, folder)
+    else:
+        scenes = shots.detect_shots(ctx, {"source": source}, clip, folder)
+    frames = [dict(index=i, scene=i, time=s["time"],
+                   path=str(folder / s["thumbnail"]), frame_accurate=True)
+              for i, s in enumerate(scenes)]
+    return scenes, frames
 
 
 def analyze(ctx, project, clip, folder, cache_dir, progress_start=0, progress_end=100):
     scenes, frames = sample_scenes(ctx, project["source"], clip, folder)
+    clip["source_shots"] = scenes
     if not frames:
         raise ValueError("정보 확인용 프레임을 읽을 수 없습니다. 원본을 확인하고 다시 시도해 주세요.")
     regions = {}
@@ -97,7 +55,8 @@ def analyze(ctx, project, clip, folder, cache_dir, progress_start=0, progress_en
             for s in project["transcript"]
             if s["end"] > clip["start"] and s["start"] < clip["end"]
         )
-        prompt = f"""첨부는 가로 영상의 연속 프레임입니다. 각 타일에서 실제 영상 영역만 좌표0~1로 보세요.
+        prompt = f"""첨부는 가로 영상의 각 실제 컷을 대표하는 프레임입니다. 컷 경계는 원본의 연속 프레임에서 이미 검출했습니다.
+각 FRAME은 해당 컷 전체에 적용할 구도를 판단합니다. 각 타일에서 실제 영상 영역만 좌표0~1로 보세요.
 목표는 '설명 자료가 등장하는 모든 구간'을 찾는 것입니다. 잘렸을 때만 찾는 것이 아닙니다.
 각 FRAME에서 아래 중 하나가 보이면 information_present=true:
 - 별도로 삽입한 그림·사진·비교 이미지·작은 설명 영상(PIP)
@@ -154,7 +113,7 @@ FRAME 번호마다 정확히 하나: {[f['index'] for f in group]}
 
 
 def group_information(scenes, frames, regions, current, metadata):
-    """Contiguous positive sample cells become real intervals, not one whole-scene hint."""
+    """Use decoded cut bounds; retain sample-cell handling for legacy callers."""
     results = []
     for scene_i, scene in enumerate(scenes):
         fs = sorted((f for f in frames if f["scene"] == scene_i), key=lambda f: f["time"])
@@ -164,8 +123,9 @@ def group_information(scenes, frames, regions, current, metadata):
                 return
             first, last = run[0], run[-1]
             positive = [regions[fs[i]["index"]] for i in run]
-            start = scene["start"] if first == 0 else (fs[first-1]["time"] + fs[first]["time"]) / 2
-            end = scene["end"] if last == len(fs)-1 else (fs[last]["time"] + fs[last+1]["time"]) / 2
+            exact = scene.get("frame_accurate", False)
+            start = scene["start"] if exact or first == 0 else (fs[first-1]["time"] + fs[first]["time"]) / 2
+            end = scene["end"] if exact or last == len(fs)-1 else (fs[last]["time"] + fs[last+1]["time"]) / 2
             left, right = min(r["left"] for r in positive), max(r["right"] for r in positive)
             zoom = min(min(r["zoom"] for r in positive), 1 / max(right-left, .01), 2)
             zoom = max(1, zoom)
@@ -184,11 +144,13 @@ def group_information(scenes, frames, regions, current, metadata):
                 alignment, center = "전체 폭 보기", .5
             representative = max(run, key=lambda i: regions[fs[i]["index"]]["confidence"])
             f = fs[representative]; r = regions[f["index"]]
-            identity = hashlib.sha256(f"{start:.3f}:{end:.3f}".encode()).hexdigest()[:16]
-            results.append(dict(id=identity, start=round(start,3), end=round(end,3), time=f["time"],
+            identity = scene["id"] if exact else hashlib.sha256(f"{start:.3f}:{end:.3f}".encode()).hexdigest()[:16]
+            results.append(dict(id=identity, start=start if exact else round(start,3),
+                end=end if exact else round(end,3), time=f["time"],
                 subject=r["subject"], direction=alignment, center=round(center,4), zoom=round(zoom,4),
                 left=left, right=right, confidence=min(x["confidence"] for x in positive),
-                reason=r["reason"], thumbnail=Path(f["path"]).name, sample_interval=2))
+                reason=r["reason"], thumbnail=Path(f["path"]).name, sample_interval=0 if exact else 2,
+                **(dict(frame_accurate=True, source_shot_id=scene["id"]) if exact else {})))
         for i, f in enumerate(fs):
             r = regions[f["index"]]
             if not r["information_present"]:
@@ -207,7 +169,8 @@ def group_information(scenes, frames, regions, current, metadata):
 def merge_touching(results):
     merged = []
     for s in sorted(results, key=lambda s: s["start"]):
-        if (merged and abs(merged[-1]["end"] - s["start"]) < .15
+        if (merged and not s.get("frame_accurate") and not merged[-1].get("frame_accurate")
+            and abs(merged[-1]["end"] - s["start"]) < .15
             and merged[-1].get("subject") == s.get("subject")
             and abs(merged[-1]["center"] - s["center"]) < .08
             and abs(merged[-1]["zoom"] - s["zoom"]) < .08):

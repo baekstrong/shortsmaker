@@ -11,6 +11,7 @@ from .parallel import parallel_tasks
 from . import ai, media
 from .store import uid
 from .timeline import validate_cuts, trim_cuts
+from .shot_editing import edit_shot, trim_shots
 
 
 def export_folder(project):
@@ -103,7 +104,7 @@ class Service:
     def __init__(self, store, jobs):
         self.store, self.jobs = store, jobs
         self._source_checks = set()
-        for kind in ("analyze", "hooks", "framing", "encode"):
+        for kind in ("analyze", "hooks", "framing", "shots", "encode"):
             jobs.handlers[kind] = getattr(self, kind)
 
     def source(self, p):
@@ -294,10 +295,37 @@ class Service:
 
             def save(project):
                 c = next(c for c in project["clips"] if c["id"] == clip["id"])
-                c.update(frame_suggestions=result, frame_analysis_version=2)
+                c.update(frame_suggestions=result, frame_analysis_version=3)
+                if clip.get("source_shots"):
+                    c["source_shots"] = clip["source_shots"]
                 validate_clip(c, project["metadata"]["duration"])
 
-            self.store.change(pid, save, history=True)
+            self.store.change(pid, save, revision=p["revision"], history=True)
+            p = self.store.load(pid)
+
+    def shots(self, ctx, pid, args):
+        from .shots import detect_shots, ensure_thumbnails
+
+        p = self.store.load(pid)
+        self.source(p)
+        clips = self.selected(p, args)
+        for i, clip in enumerate(clips):
+            ctx.progress("원본 컷 확인 · " + clip["title"], i * 100 / len(clips))
+            folder = self.store.folder(pid) / "frames" / clip["id"]
+            if clip.get("source_shots_manual") and clip.get("source_shots"):
+                result = clip["source_shots"]
+                ensure_thumbnails(ctx, p["source"], clip, result, folder)
+            else:
+                result = detect_shots(ctx, p, clip, folder)
+
+            def save(project):
+                c = next(c for c in project["clips"] if c["id"] == clip["id"])
+                # A refresh supplies missing thumbnails but keeps corrected boundaries.
+                if not c.get("source_shots_manual"):
+                    c["source_shots"] = result
+
+            self.store.change(pid, save, revision=p["revision"], history=True)
+            p = self.store.load(pid)
 
     def encode(self, ctx, pid, args):
         p = self.store.load(pid)
@@ -371,6 +399,8 @@ class Service:
                 validate_cuts(dict(c, cuts=[cut]))
                 c["cuts"] = sorted(c.get("cuts", []) + [cut], key=lambda r: r["start"])
                 c.update(confirmed=False, content_edit_summary="불필요한 구간을 직접 삭제했습니다.")
+            elif action in ("frame_shot", "shot_split", "shot_merge", "shot_boundary"):
+                edit_shot(c, p["metadata"], action, body)
             elif action == "frame_region_add":
                 start, end = body.get("start"), body.get("end")
                 if (not all(isinstance(t, (int, float)) and not isinstance(t, bool) and math.isfinite(t) for t in (start, end))
@@ -425,6 +455,7 @@ class Service:
                 c["end"] = at
                 for part in (c, second):
                     trim_cuts(part)
+                    trim_shots(part)
                     part.pop("content_edit_version", None)
                     part.update(confirmed=False, render=None)
                     part["frame_overrides"] = [dict(f, start=max(part["start"], f["start"]), end=min(part["end"], f["end"]))
@@ -465,6 +496,7 @@ class Service:
                     cuts=merged_cuts,
                 )
                 c.pop("content_edit_version", None)
+                trim_shots(c)
                 p["clips"].pop(i + 1)
             elif action == "update":
                 allowed = (
@@ -486,6 +518,7 @@ class Service:
                 )
                 if bounds:
                     c.update(confirmed=False)
+                    trim_shots(c)
                     c.pop("content_edit_version", None)
                     changes["confirmed"] = False
                 c.update(changes)

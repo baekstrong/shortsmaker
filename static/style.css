@@ -819,3 +819,45 @@ main > header h1 { font-size:22px; margin:3px 0; }
 .content-cut { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .content-cut > div { flex: 1; min-width: 0; }
 .content-cut p { margin: 5px 0; font-size: 13px; }
+
+/* Source shots keep one continuous time scale while crop edits stay scoped to a shot. */
+.shot-editor { padding:14px; margin:0 0 14px; border:1px solid var(--line); border-radius:12px; background:var(--panel); min-width:0; }
+.shot-toolbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.shot-toolbar h2 { font-size:14px; }
+.shot-toolbar > div { flex:1; min-width:180px; }
+.shot-toolbar button, .shot-editor .row button { font-size:11px; padding:6px 8px; }
+.shot-toolbar label { margin:0; font-size:11px; }
+.shot-toolbar .shot-zoom { display:flex; align-items:center; gap:8px; }
+.shot-zoom input { width:110px; }
+.shot-timeline-scroll { overflow-x:auto; overscroll-behavior-x:contain; margin-top:12px; padding-bottom:6px; }
+.shot-timeline { position:relative; height:97px; min-width:100%; }
+.shot-ruler { position:relative; height:25px; overflow:hidden; cursor:crosshair; background:#15191b; }
+.shot-ruler span { position:absolute; top:0; height:25px; padding-left:4px; border-left:1px solid #53605b; color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; white-space:nowrap; pointer-events:none; }
+.shot-strip { position:relative; height:72px; background:#101314; }
+.shot-cell { position:absolute; height:72px; min-width:0; border:1px solid #555e64; border-radius:3px; padding:0; overflow:hidden; background:#29332d; }
+.shot-cell img { width:100%; height:100%; display:block; object-fit:cover; opacity:.8; pointer-events:none; }
+.shot-cell:hover img, .shot-cell.selected img { opacity:1; }
+.shot-cell.selected { outline:2px solid var(--accent); outline-offset:-2px; border-color:var(--accent); z-index:2; }
+.shot-cell.playing::after { content:""; position:absolute; inset:0; box-shadow:inset 0 -3px #e7f09b; pointer-events:none; }
+.shot-cell.adjusted { border-bottom-color:#9fc776; }
+.shot-cell-label { position:absolute; left:3px; right:3px; bottom:3px; background:#111d; padding:1px 4px; border-radius:3px; text-align:left; font-size:10px; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+.shot-no-image { font-size:10px; color:var(--muted); }
+.shot-playhead { position:absolute; top:0; bottom:0; width:1px; background:#ffda49; z-index:3; pointer-events:none; }
+.shot-playhead::before { content:""; position:absolute; left:-4px; width:9px; height:10px; background:#ffda49; clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); }
+.shot-transport { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-top:8px; }
+.shot-editor .row { flex-wrap:wrap; }
+#shot-position { float:none; font-size:11px; font-variant-numeric:tabular-nums; margin-left:5px; }
+.selected-shot { margin-top:10px; border-left:3px solid var(--accent); padding:4px 10px; background:#202820; }
+.selected-shot > strong { font-size:12px; margin-right:10px; color:var(--accent); }
+#selected-shot-time { color:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+.shot-quick-frame { margin:8px 0; }
+.shot-boundaries { display:flex; flex-wrap:wrap; gap:8px 18px; margin:5px 0; }
+.shot-boundaries .row { gap:5px; }
+.shot-boundaries .row > span { font-size:11px; min-width:50px; }
+.shot-help { margin:8px 0 0; font-size:11px; }
+@media (max-width:750px) {
+  .shot-editor { padding:10px; }
+  .shot-toolbar { gap:8px; }
+  .shot-toolbar > div { min-width:130px; }
+  .shot-zoom input { width:80px; }
+}

@@ -99,6 +99,31 @@
           </div>
         </details>
         <div id="job-status" aria-live="polite"></div>
+        <section id="shot-editor" class="shot-editor" aria-label="원본 컷 타임라인" hidden>
+          <div class="shot-toolbar">
+            <div><h2>원본 컷 · 화면 구도</h2><small id="shot-summary" class="muted"></small></div>
+            <button id="detect-shots">원본 컷 찾기</button>
+            <label class="shot-zoom">타임라인 확대<input id="shot-zoom" type="range" min="1" max="40" value="1" step="1" /></label>
+            <label class="check"><input id="snap-shots" type="checkbox" checked />컷 경계에 붙이기</label>
+          </div>
+          <p id="shot-empty" class="muted">원본 컷을 찾으면 장면이 바뀌는 순간을 썸네일로 확인하고, 컷마다 구도를 조정할 수 있습니다.</p>
+          <div id="shot-timeline-scroll" class="shot-timeline-scroll" tabindex="0" aria-label="컷 타임라인 · 좌우 방향키로 한 프레임, 위아래 방향키로 이전·다음 컷 이동">
+            <div id="shot-timeline" class="shot-timeline"><div id="shot-ruler" class="shot-ruler"></div><div id="shot-strip" class="shot-strip"></div><div id="shot-playhead" class="shot-playhead"></div></div>
+          </div>
+          <div class="shot-transport">
+            <div class="row"><button id="previous-shot" title="이전 원본 컷">이전 컷</button><button id="previous-frame" title="한 프레임 뒤로">−1 프레임</button><button id="next-frame" title="한 프레임 앞으로">+1 프레임</button><button id="next-shot" title="다음 원본 컷">다음 컷</button><output id="shot-position"></output></div>
+            <div class="row"><button id="split-shot">현재 프레임에 컷 경계 추가</button><button id="merge-shot">선택 컷과 다음 컷 합치기</button></div>
+          </div>
+          <div id="selected-shot" class="selected-shot" hidden>
+            <strong id="selected-shot-title"></strong><span id="selected-shot-time"></span>
+            <div class="row shot-quick-frame" aria-label="선택한 원본 컷 정렬"><button data-shot-align="0">왼쪽 정렬</button><button data-shot-align="0.5">가운데 정렬</button><button data-shot-align="1">오른쪽 정렬</button><button id="shot-frame-controls">확대·위치 세부 조정</button></div>
+            <div class="shot-boundaries">
+              <div class="row"><span>시작 경계</span><button data-shot-boundary="start" data-shift="-1">−1 프레임</button><button data-shot-boundary="start" data-shift="1">+1 프레임</button><button data-shot-boundary="start" data-at-now>현재 프레임에 맞춤</button></div>
+              <div class="row"><span>끝 경계</span><button data-shot-boundary="end" data-shift="-1">−1 프레임</button><button data-shot-boundary="end" data-shift="1">+1 프레임</button><button data-shot-boundary="end" data-at-now>현재 프레임에 맞춤</button></div>
+            </div>
+          </div>
+          <p class="muted shot-help">썸네일을 선택한 뒤 정렬·확대·드래그하면 그 컷 전체에만 적용됩니다. 컷 경계 추가·합치기는 구도 편집용이며 영상·음성 길이는 유지됩니다.</p>
+        </section>
         <div class="work-grid">
           <section class="clips-pane" tabindex="0" aria-label="쇼츠 구간 목록">
             <div class="pane-heading">
@@ -183,12 +208,12 @@
               <small id="preview-region-name"></small>
               <div class="region-trim">
                 <div class="region-trim-track"><div id="region-trim-fill"></div></div>
-                <input id="region-trim-start" type="range" step="0.01" aria-label="설명 구간 적용 시작 시간" />
-                <input id="region-trim-end" type="range" step="0.01" aria-label="설명 구간 적용 끝 시간" />
+                <input id="region-trim-start" type="range" step="any" aria-label="설명 구간 적용 시작 시간" />
+                <input id="region-trim-end" type="range" step="any" aria-label="설명 구간 적용 끝 시간" />
               </div>
               <div class="row">
-                <label>적용 시작 (초)<input id="selected-region-start" type="number" min="0" step="0.01" /></label>
-                <label>적용 끝 (초)<input id="selected-region-end" type="number" min="0" step="0.01" /></label>
+                <label>적용 시작 (초)<input id="selected-region-start" type="number" min="0" step="any" /></label>
+                <label>적용 끝 (초)<input id="selected-region-end" type="number" min="0" step="any" /></label>
               </div>
               <div class="row"><button id="selected-region-now-start">현재 위치를 시작으로</button><button id="selected-region-now-end">현재 위치를 끝으로</button><button id="selected-region-save">시간 적용</button></div>
               <small>시간은 삭제 전 원본 소재의 시작을 0초로 표시합니다.</small>
@@ -196,7 +221,7 @@
               <p id="region-trim-status" role="status"></p>
             </div>
             <details id="custom-region"><summary>＋ 원하는 시간만 화면 크기·위치 조정</summary>
-              <div class="row"><label>시작 (초)<input id="custom-region-start" type="number" min="0" step="0.01" value="0" /></label><label>끝 (초)<input id="custom-region-end" type="number" min="0" step="0.01" /></label></div>
+              <div class="row"><label>시작 (초)<input id="custom-region-start" type="number" min="0" step="any" value="0" /></label><label>끝 (초)<input id="custom-region-end" type="number" min="0" step="any" /></label></div>
               <button id="add-frame-region">이 시간에 조정 구간 만들기</button>
               <p class="muted">쇼츠 시작 기준 시간입니다. 구간을 만든 뒤 아래 확대율·정렬을 조정하세요.</p>
             </details>
@@ -236,7 +261,7 @@
               /></label>
               <p class="muted">
                 그림·설명 글·각도 표시 구간은 위치만 추천합니다. 직접 적용할 때만 화면 크기·위치가 바뀝니다.
-                필요하면 구간을 선택해 드래그하거나 정렬 버튼으로 조정하세요. 경계는 약 2초 간격 분석 기준입니다.
+                필요하면 구간을 선택해 드래그하거나 정렬 버튼으로 조정하세요. 원본 컷 경계를 프레임 단위로 검출하며, 타임라인에서 경계와 구도를 직접 보정할 수 있습니다.
               </p>
               <div id="frame-suggestions" aria-live="polite"></div>
               <hr />

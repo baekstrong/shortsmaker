@@ -94,6 +94,9 @@ def create_app(data_dir=None):
         return jsonify(records=publisher.records())
 
     def present(project):
+        # Undo snapshots now include per-frame timestamps. Keep that history
+        # on disk instead of retransmitting thirty copies on every UI poll.
+        project.pop("history", None)
         for clip in project["clips"]:
             render = clip.get("render")
             clip["render_current"] = bool(
@@ -206,6 +209,21 @@ def create_app(data_dir=None):
         path = store.folder(pid) / "frames" / cid / name
         if not path.is_file():
             media.information_image(service.source(p), s["time"], path)
+        return send_file(path, conditional=True)
+
+    @app.get("/api/projects/<pid>/clips/<cid>/shots/<sid>.jpg")
+    def shot_thumbnail(pid, cid, sid):
+        p = store.load(pid)
+        c = next(c for c in p["clips"] if c["id"] == cid)
+        shot = next((s for s in c.get("source_shots", []) if s["id"] == sid), None)
+        if shot is None:
+            raise ValueError("원본 컷을 다시 선택해 주세요.")
+        name = shot.get("thumbnail", "")
+        if not name or Path(name).name != name:
+            raise ValueError("원본 컷 미리보기가 없습니다.")
+        path = store.folder(pid) / "frames" / cid / name
+        if not path.is_file():
+            media.information_image(service.source(p), shot["time"], path)
         return send_file(path, conditional=True)
 
     @app.get("/api/projects/<pid>/clips/<cid>/output")

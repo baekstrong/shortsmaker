@@ -209,7 +209,7 @@ def title_image(text, yellow, path, font_size=80):
 
 def render_key(project, clip):
     payload = {
-        "version": 7,
+        "version": 8,
         "font": font_key(),
         "source": project["metadata"],
         "path": project["source"],
@@ -268,8 +268,13 @@ def video_filter(meta, scene, title_input="1:v"):
         if meta.get("hdr")
         else ""
     )
+    # Trim before resampling so the next shot cannot use the previous framing.
+    # Explicit fps removes output -r's startup drop delay. One cloned final
+    # frame covers cumulative rounding; export's frame limit sets the duration.
     return (
-        f"[0:v]setpts=PTS-STARTPTS,{hdr}scale={g['scaled_width']}:{g['scaled_height']},"
+        f"[0:v]trim=duration={scene['end'] - scene['start']},setpts=PTS-STARTPTS,"
+        f"fps=30:round=up,tpad=stop_mode=clone:stop=1,{hdr}"
+        f"scale={g['scaled_width']}:{g['scaled_height']},"
         f"setsar=1,crop=1080:{g['scaled_height']}:'{x}':0,"
         f"pad=1080:1920:0:{g['y']}:black[base];"
         f"[base][{title_input}]overlay=0:0:format=auto,format=yuv420p[v]"

@@ -265,6 +265,7 @@ class Jobs:
                     "content_edit": "불필요한 발언 편집",
                     "hooks": "후킹 후보 생성",
                     "framing": "그림·글 조정 제안",
+                    "shots": "원본 컷 찾기",
                     "encode": "쇼츠 인코딩",
                     "schedule": "발행 예약",
                     "refresh": "예약 상태 확인·정리",

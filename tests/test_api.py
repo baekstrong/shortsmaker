@@ -43,6 +43,19 @@ def test_secrets_are_not_exposed_by_state(client):
     assert "gpt-6.1-sol" in data["models"]
 
 
+def test_frame_history_is_kept_for_undo_without_poll_payload_duplication(client):
+    from shortsmaker.service import new_clip
+    store = client.application.extensions["store"]
+    p = store.create("/tmp/source.mp4", dict(duration=10, width=1920, height=1080))
+    c = new_clip(0, 3)
+    c["source_shots"] = [dict(id="shot", start=0, end=3, frame_times=[0, .04, .08])]
+    store.change(p["id"], lambda p: p.update(clips=[c], history=[[c]]))
+    response = client.get("/api/state").json["projects"][0]
+    assert "history" not in response
+    assert response["clips"][0]["source_shots"] == c["source_shots"]
+    assert store.load(p["id"])["history"] == [[c]]
+
+
 def test_delete_project_hides_list_and_preserves_files(client, tmp_path):
     from shortsmaker.store import Store
 
