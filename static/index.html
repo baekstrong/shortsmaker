@@ -108,7 +108,7 @@
           </div>
           <p id="shot-empty" class="muted">원본 컷을 찾으면 장면이 바뀌는 순간을 썸네일로 확인하고, 컷마다 구도를 조정할 수 있습니다.</p>
           <div id="shot-timeline-scroll" class="shot-timeline-scroll" tabindex="0" aria-label="컷 타임라인 · 좌우 방향키로 한 프레임, 위아래 방향키로 이전·다음 컷 이동">
-            <div id="shot-timeline" class="shot-timeline"><div id="shot-ruler" class="shot-ruler"></div><div id="shot-strip" class="shot-strip"></div><div id="shot-playhead" class="shot-playhead"></div></div>
+            <div id="shot-timeline" class="shot-timeline"><div id="shot-ruler" class="shot-ruler"></div><div id="shot-strip" class="shot-strip"></div><div id="shot-playhead" class="shot-playhead" role="slider" tabindex="0" aria-label="컷 타임라인 재생 위치" aria-orientation="horizontal" title="드래그해서 프레임 이동"></div></div>
           </div>
           <div class="shot-transport">
             <div class="row"><button id="previous-shot" title="이전 원본 컷">이전 컷</button><button id="previous-frame" title="한 프레임 뒤로">−1 프레임</button><button id="next-frame" title="한 프레임 앞으로">+1 프레임</button><button id="next-shot" title="다음 원본 컷">다음 컷</button><output id="shot-position"></output></div>
@@ -122,7 +122,7 @@
               <div class="row"><span>끝 경계</span><button data-shot-boundary="end" data-shift="-1">−1 프레임</button><button data-shot-boundary="end" data-shift="1">+1 프레임</button><button data-shot-boundary="end" data-at-now>현재 프레임에 맞춤</button></div>
             </div>
           </div>
-          <p class="muted shot-help">썸네일을 선택한 뒤 정렬·확대·드래그하면 그 컷 전체에만 적용됩니다. 컷 경계 추가·합치기는 구도 편집용이며 영상·음성 길이는 유지됩니다.</p>
+          <p class="muted shot-help">노란 표시선이나 시간 눈금을 드래그하면 프레임을 이동합니다. 썸네일을 선택한 뒤 정렬·확대·드래그하면 그 컷 전체에만 적용됩니다. 컷 경계 추가·합치기는 영상·음성 길이를 바꾸지 않습니다.</p>
         </section>
         <div class="work-grid">
           <section class="clips-pane" tabindex="0" aria-label="쇼츠 구간 목록">
@@ -162,44 +162,20 @@
                 이 문구로 확정
               </button>
           </section>
-          <section class="editor-pane" tabindex="0" aria-label="쇼츠 구간과 화면 구도 편집">
+          <section class="editor-pane" tabindex="0" aria-label="화면 구도 편집">
             <div class="pane-heading">
-              <h2>쇼츠 편집</h2>
+              <h2>화면 구도</h2>
               <span id="save-state" class="muted">자동 저장</span>
             </div>
             <div id="editor-empty" class="muted">
               분석을 시작하거나 구간을 직접 추가하세요.
             </div>
             <div id="editor" hidden>
-              <label>구간 이름<input id="clip-title" /></label>
-              <div class="row">
-                <label
-                  >시작 (초)<input
-                    id="start"
-                    type="number"
-                    min="0"
-                    step="0.01" /></label
-                ><label
-                  >끝 (초)<input id="end" type="number" min="0" step="0.01"
-                /></label>
-              </div>
-              <div class="row">
-                <button id="set-start" class="quiet">
-                  현재 위치를 시작으로</button
-                ><button id="set-end" class="quiet">현재 위치를 끝으로</button>
-              </div>
-              <div class="row">
-                <button id="split">현재 위치에서 나누기</button
-                ><button id="merge">다음 구간과 합치기</button>
-                <button id="delete-clip" title="선택한 쇼츠 구간만 삭제합니다. 되돌리기로 복원할 수 있습니다.">이 구간 삭제</button>
-              </div>
-              <hr />
               <details id="content-edit-legacy" hidden><summary>기존 삭제 구간 복원</summary>
                 <p class="muted">이전에 삭제한 구간입니다. 복원하면 해당 영상이 다시 이어집니다.</p>
                 <div id="content-cuts" aria-label="삭제한 발언과 복원"></div>
               </details>
               <div class="pane-heading">
-                <h3>화면 구도</h3>
                 <button id="auto-frame" class="quiet">설명 화면 찾기</button>
               </div>
             <div id="information-markers" class="information-markers" aria-label="설명 화면 구간"></div>

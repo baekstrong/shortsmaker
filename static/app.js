@@ -35,6 +35,7 @@ let channels = [],
 let selectedRegionId = null;
 let selectedShotId = null;
 let shotTimelineKey = "", shotFrameCache = { key:"", times:[] };
+let shotScrub = null;
 let presentedTime = null;
 let trimDraft = null;
 let frameDraft = null;
@@ -343,9 +344,6 @@ function renderEditor() {
     (v.currentTime < c.start || v.currentTime > c.end)
   )
     v.currentTime = keptRanges(c)[0].start;
-  fieldValue("clip-title", c.title);
-  fieldValue("start", c.start);
-  fieldValue("end", c.end);
   $("content-edit-legacy").hidden = !(c.cuts || []).length;
   $("content-cuts").innerHTML = (c.cuts || []).map((cut, i) => `<div class="content-cut"><div><strong>원본 ${cut.start.toFixed(2)} ~ ${cut.end.toFixed(2)}초 삭제</strong><p>${esc(cut.reason)}</p></div><button data-restore-cut="${i}" class="quiet">복원</button></div>`).join("");
   const draft = titleDrafts.get(`${pid}/${cid}`);
@@ -569,6 +567,7 @@ function timelineTick(duration, width) {
 }
 function renderShotTimeline() {
   const c = clip(), shots = sourceShots();
+  if (shotScrub && (!c || shotScrub.pid !== pid || shotScrub.cid !== cid || busy() || mutating)) endShotScrub();
   $("shot-editor").hidden = !c;
   if (!c) return;
   if (selectedShotId && !shots.some(s => s.id === selectedShotId)) selectedShotId = null;
@@ -609,7 +608,7 @@ function renderShotTimeline() {
     const first = button.dataset.shotBoundary === "start" && selectedIndex === 0;
     const last = button.dataset.shotBoundary === "end" && selectedIndex === shots.length-1;
     button.disabled = disabled || !selected || first || last;
-    button.title = first || last ? "쇼츠의 맨 앞·뒤는 쇼츠 편집에서 조정합니다." : "인접한 두 컷의 공통 경계를 이동합니다.";
+    button.title = first || last ? "쇼츠의 맨 앞·뒤 경계는 고정되어 있습니다." : "인접한 두 컷의 공통 경계를 이동합니다.";
   }
   for (const id of ["previous-frame","next-frame","split-shot"]) $(id).disabled = disabled || (id === "split-shot" && !shots.length);
   $("previous-shot").disabled = disabled || !shots.length;
@@ -623,6 +622,10 @@ function updateShotPlayhead(at) {
   if (!c) return;
   at = Math.max(c.start, Math.min(c.end, at));
   $("shot-playhead").style.left = `${100*Math.max(0,Math.min(c.end-c.start,at-c.start))/(c.end-c.start)}%`;
+  $("shot-playhead").setAttribute("aria-valuemin", "0");
+  $("shot-playhead").setAttribute("aria-valuemax", String(c.end-c.start));
+  $("shot-playhead").setAttribute("aria-valuenow", String(at-c.start));
+  $("shot-playhead").setAttribute("aria-valuetext", preciseTime(at-c.start));
   const frameTimes = sourceFrameTimes();
   const number = frameTimes.length ? Math.max(1,lowerFrameIndex(frameTimes, at+1e-6)) : Math.max(1,Math.round((at-c.start)*sourceFps())+1);
   $("shot-position").textContent = `${preciseTime(at-c.start)} · ${number} 프레임`;
@@ -640,11 +643,42 @@ function moveShot(direction) {
 }
 $("detect-shots").onclick = safe(() => run("shots", { clip_ids:[cid] }));
 $("shot-strip").onclick = event => { const cell = event.target.closest("[data-shot-id]"); if (cell) selectShot(cell.dataset.shotId); };
-$("shot-ruler").onpointerdown = event => {
-  if (!clip() || busy()) return;
+function scrubShotAt(event) {
+  if (!shotScrub || event.pointerId !== shotScrub.pointerId) return;
+  if (!clip() || shotScrub.pid !== pid || shotScrub.cid !== cid || busy() || mutating) { endShotScrub(); return; }
+  event.preventDefault();
   const rect = $("shot-timeline").getBoundingClientRect();
-  seekFrame(clip().start+(event.clientX-rect.left)/rect.width*(clip().end-clip().start), true);
-};
+  if (rect.width > 0) seekFrame(clip().start+(event.clientX-rect.left-shotScrub.offset)/rect.width*(clip().end-clip().start));
+}
+function endShotScrub(event) {
+  if (!shotScrub || (event && event.pointerId !== shotScrub.pointerId)) return;
+  const pointerId = shotScrub.pointerId;
+  shotScrub = null;
+  const timeline = $("shot-timeline");
+  timeline.classList.remove("scrubbing");
+  if (timeline.hasPointerCapture(pointerId)) timeline.releasePointerCapture(pointerId);
+}
+function startShotScrub(event) {
+  if (!clip() || busy() || mutating || event.button !== 0 || event.isPrimary === false || shotScrub) return;
+  event.preventDefault();
+  const c = clip(), timeline = $("shot-timeline"), rect = timeline.getBoundingClientRect();
+  if (rect.width <= 0) return;
+  const at = Math.max(c.start, Math.min(c.end, previewTime()));
+  // Keep the grabbed frame in place even when pressing the edge of its hit area.
+  const offset = event.currentTarget === $("shot-playhead") ? event.clientX-rect.left-(at-c.start)/(c.end-c.start)*rect.width : 0;
+  shotScrub = {pid, cid, pointerId:event.pointerId, offset};
+  timeline.setPointerCapture(event.pointerId);
+  timeline.classList.add("scrubbing");
+  $("shot-timeline-scroll").focus({preventScroll:true});
+  scrubShotAt(event);
+}
+$("shot-ruler").onpointerdown = startShotScrub;
+$("shot-playhead").onpointerdown = startShotScrub;
+$("shot-timeline").onpointermove = scrubShotAt;
+$("shot-timeline").onpointerup = event => { scrubShotAt(event); endShotScrub(event); };
+$("shot-timeline").onpointercancel = endShotScrub;
+$("shot-timeline").onlostpointercapture = endShotScrub;
+window.addEventListener("blur", () => endShotScrub());
 $("shot-zoom").oninput = () => {
   const at = previewTime(); renderShotTimeline();
   const scroll = $("shot-timeline-scroll"), width = $("shot-timeline").clientWidth;
@@ -1019,39 +1053,6 @@ $("add-clip").onclick = safe(async () => {
   render();
 });
 $("undo").onclick = safe(() => edit("undo"));
-$("clip-title").onchange = safe(() => change({ title: $("clip-title").value }));
-for (const id of ["start", "end"])
-  $(id).onchange = safe(() => change({ [id]: Number($(id).value) }));
-$("set-start").onclick = safe(() =>
-  change({ start: Number($("video").currentTime.toFixed(3)) }),
-);
-$("set-end").onclick = safe(() =>
-  change({ end: Number($("video").currentTime.toFixed(3)) }),
-);
-$("split").onclick = safe(async () => {
-  const target = { pid, cid }, at = $("video").currentTime;
-  flushTitleDraft();
-  await editQueue;
-  await edit("split", { at }, target);
-});
-$("delete-clip").onclick = safe(async () => {
-  if (!clip() || busy()) return;
-  const target = { pid, cid };
-  const index = project().clips.findIndex(c => c.id === cid);
-  flushTitleDraft();
-  await editQueue;
-  await edit("delete_clip", {}, target);
-  if (pid === target.pid) {
-    cid = project().clips[Math.min(index, project().clips.length-1)]?.id || null;
-    selectedRegionId = null;
-    selectedShotId = null;
-    trimDraft = null;
-    shownRevision = -1;
-    render();
-  }
-  toast("구간을 삭제했습니다. 되돌리기로 복원할 수 있습니다.");
-});
-$("merge").onclick = safe(() => edit("merge"));
 $("hooks").onclick = safe(async (e) => {
   const b = e.target.closest("[data-hook]");
   if (b) {

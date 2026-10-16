@@ -831,7 +831,7 @@ main > header h1 { font-size:22px; margin:3px 0; }
 .shot-zoom input { width:110px; }
 .shot-timeline-scroll { overflow-x:auto; overscroll-behavior-x:contain; margin-top:12px; padding-bottom:6px; }
 .shot-timeline { position:relative; height:97px; min-width:100%; }
-.shot-ruler { position:relative; height:25px; overflow:hidden; cursor:crosshair; background:#15191b; }
+.shot-ruler { position:relative; height:25px; overflow:hidden; cursor:ew-resize; background:#15191b; touch-action:none; user-select:none; }
 .shot-ruler span { position:absolute; top:0; height:25px; padding-left:4px; border-left:1px solid #53605b; color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; white-space:nowrap; pointer-events:none; }
 .shot-strip { position:relative; height:72px; background:#101314; }
 .shot-cell { position:absolute; height:72px; min-width:0; border:1px solid #555e64; border-radius:3px; padding:0; overflow:hidden; background:#29332d; }
@@ -842,8 +842,10 @@ main > header h1 { font-size:22px; margin:3px 0; }
 .shot-cell.adjusted { border-bottom-color:#9fc776; }
 .shot-cell-label { position:absolute; left:3px; right:3px; bottom:3px; background:#111d; padding:1px 4px; border-radius:3px; text-align:left; font-size:10px; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
 .shot-no-image { font-size:10px; color:var(--muted); }
-.shot-playhead { position:absolute; top:0; bottom:0; width:1px; background:#ffda49; z-index:3; pointer-events:none; }
-.shot-playhead::before { content:""; position:absolute; left:-4px; width:9px; height:10px; background:#ffda49; clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); }
+.shot-playhead { position:absolute; top:0; bottom:0; width:17px; transform:translateX(-50%); z-index:3; cursor:ew-resize; touch-action:none; user-select:none; }
+.shot-playhead::before { content:""; position:absolute; left:4px; width:9px; height:10px; background:#ffda49; clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); }
+.shot-playhead::after { content:""; position:absolute; left:8px; top:0; bottom:0; width:1px; background:#ffda49; }
+.shot-timeline.scrubbing, .shot-timeline.scrubbing * { cursor:ew-resize; user-select:none; }
 .shot-transport { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-top:8px; }
 .shot-editor .row { flex-wrap:wrap; }
 #shot-position { float:none; font-size:11px; font-variant-numeric:tabular-nums; margin-left:5px; }

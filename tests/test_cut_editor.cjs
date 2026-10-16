@@ -13,7 +13,10 @@ function element(id) {
     value:'', checked:true, style:{}, dataset:{}, children:[], clientWidth:600,
     classList:{ toggle(){}, add(){}, remove(){} }, listeners:{}, currentTime:0, paused:true, seeking:false,
     addEventListener(name, fn) { this.listeners[name] = fn; }, setAttribute(){},
-    pause() { this.paused = true; }, focus(){}, scrollIntoView(){}, hasPointerCapture(){return false;},
+    pause() { this.paused = true; }, focus(){}, scrollIntoView(){},
+    getBoundingClientRect(){return this.rect || {left:100,width:600};},
+    setPointerCapture(id){this.captured=id;}, hasPointerCapture(id){return this.captured===id;},
+    releasePointerCapture(){this.captured=null;},
   });
   return elements.get(id);
 }
@@ -57,6 +60,38 @@ assert.equal(run('preciseTime(59.9996)'), '01:00.000', 'millisecond labels carry
 assert.equal(run('snapRegionTime(1.08)'), 1.066667, 'enabled snapping finds the nearby cut boundary');
 element('snap-shots').checked = false;
 assert.equal(run('snapRegionTime(1.12)'), 1.133333, 'disabled cut snapping still snaps to a decoded frame');
+const timeline = element('shot-timeline');
+const pointer = (clientX, target=element('shot-ruler'), pointerId=7) => ({clientX,currentTarget:target,pointerId,button:0,isPrimary:true,preventDefault(){}});
+run(`selectedShotId='a';`);
+const storedClip = run('JSON.stringify(clip())');
+element('shot-ruler').onpointerdown(pointer(166.666));
+assert.equal(timeline.captured, 7, 'ruler drag captures its pointer outside the ruler');
+assert.ok(Math.abs(video.currentTime-1.033333)<2e-6);
+timeline.rect={left:-200,width:1200};
+timeline.onpointermove(pointer(333.332));
+assert.ok(Math.abs(video.currentTime-1.133333)<2e-6, 'drag uses zoomed, scrolled coordinates and actual VFR frames');
+assert.equal(run('selectedShotId'), 'a', 'scrubbing preserves the selected crop edit scope');
+timeline.onpointerup(pointer(2000));
+assert.ok(Math.abs(video.currentTime-1.233333)<2e-6, 'drag clamps to the final visible frame');
+assert.equal(timeline.captured, null, 'release ends capture');
+assert.equal(run('shotScrub'), null);
+assert.equal(run('JSON.stringify(clip())'), storedClip, 'scrubbing never edits saved cuts or framing');
+video.currentTime=1.066667;
+const grabX=-200+(video.currentTime-1)/.3*1200+6;
+element('shot-playhead').onpointerdown(pointer(grabX, element('shot-playhead')));
+assert.ok(Math.abs(video.currentTime-1.066667)<2e-6, 'grabbing the wide handle edge does not jump the frame');
+timeline.onpointermove(pointer(-1000));
+assert.ok(Math.abs(video.currentTime-1)<2e-6, 'drag clamps to the beginning');
+timeline.onpointercancel(pointer(-1000));
+const stoppedTime=video.currentTime;
+timeline.onpointermove(pointer(600));
+assert.equal(video.currentTime, stoppedTime, 'cancelled drags no longer seek');
+element('shot-ruler').onpointerdown(pointer(100));
+run(`cid='other';`);
+timeline.onpointermove(pointer(500));
+assert.equal(run('shotScrub'), null, 'switching clips cancels an old drag');
+assert.equal(timeline.captured, null);
+run(`cid='c';`);
 run(`selectedShotId='a'; frameDraft={pid,cid,scopeKey:'shot:a',frame:{zoom:2,center:.2}};`);
 assert.equal(run('editingFrame().center'), .2);
 run(`selectedShotId='b';`);
@@ -109,5 +144,5 @@ assert.equal(run('previewUpdates.length'), updateCount, 'callbacks from a previo
   assert.equal(run('currentFrameDraft()'), null, 'in-flight crop is hidden after a clip switch');
   run('finishSave()');
   await saving;
-  console.log('Cut editor: decoded-frame timing, selection/save isolation, snapping, and callback lifecycle passed.');
+  console.log('Cut editor: frame timing, pointer dragging, selection/save isolation, snapping, and callback lifecycle passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
