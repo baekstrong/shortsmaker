@@ -403,6 +403,11 @@ function renderEditor() {
   $("download").disabled = busy() || !c.render_current;
 }
 let titleRequest = 0, titleURL = "", titleLoadedURL = "", titleObjectURL = null, titleRetryAt = 0;
+function updateTitleVisibility(at = previewTime()) {
+  const c = clip();
+  // Source navigation still previews the selected short's hook inside its range.
+  $("title-image").hidden = !c || (sourcePreview && !containsFrame(c, at)) || titleLoadedURL !== titleURL || !titleObjectURL;
+}
 async function loadTitlePreview(force = false) {
   if (!clip()) return;
   const url = `/api/projects/${pid}/clips/${cid}/title.png?v=${project().revision}`;
@@ -428,7 +433,7 @@ async function loadTitlePreview(force = false) {
     titleObjectURL = objectURL;
     titleLoadedURL = url;
     $("title-image").src = objectURL;
-    $("title-image").hidden = sourcePreview;
+    updateTitleVisibility();
     titleRetryAt = 0;
   } catch (e) {
     if (request !== titleRequest) return;
@@ -1089,7 +1094,7 @@ function updatePreview(at) {
   $("clip-playhead").setAttribute("aria-valuenow", String(t));
   $("clip-playhead").setAttribute("aria-valuetext", preciseTime(t));
   $("shot-playhead").hidden = sourcePreview && (t<c.start || t>=c.end);
-  $("title-image").hidden = sourcePreview || titleLoadedURL !== titleURL || !titleObjectURL;
+  updateTitleVisibility(t);
   updateShotPlayhead(t);
   const s = sourcePreview && (t<c.start || t>=c.end) ? {zoom:1,center:.5,vertical:.5} : activeFrame(t);
   const { z, sw, sh, x, y } = frameGeometry(s);

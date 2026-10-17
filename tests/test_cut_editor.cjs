@@ -36,7 +36,7 @@ vm.runInContext(fs.readFileSync(path.join(root, 'static/app.js'), 'utf8'), conte
 const run = code => vm.runInContext(code, context);
 run(`
   pid='p'; cid='c';
-  state.projects=[{id:'p',revision:1,metadata:{fps:'30000/1001',width:1920,height:1080},clips:[{
+  state.projects=[{id:'p',revision:1,metadata:{fps:'30000/1001',width:1920,height:1080,duration:10},clips:[{
     id:'c',start:1,end:1.3,manual_frame:{zoom:1.5,center:.5},
     source_shots:[{id:'a',start:1,end:1.066667,frame_times:[1,1.033333]},
       {id:'b',start:1.066667,end:1.3,frame_times:[1.066667,1.133333,1.166667,1.233333]}],
@@ -54,6 +54,21 @@ assert.equal(run('activeFrame(1.066666666667).center'), 1, 'new crop applies on 
 assert.equal(run('activeFrame(1.033333).center'), 0, 'preceding frame keeps previous crop');
 assert.equal(run('activeFrame(.999).center'), 0, 'first decoded frame before a trimmed clip gets the clip crop');
 assert.equal(run('activeFrame(1.31).center'), 1, 'paused end of clip retains final crop');
+run(`titleURL=titleLoadedURL='current-title'; titleObjectURL='blob:current-title'; seekFrame(1);`);
+assert.equal(element('title-image').hidden,false,'the selected short starts with its hook visible');
+run('seekSource(1.133333)');
+assert.equal(element('title-image').hidden,false,'scrubbing the source inside the selected short retains its hook');
+run('updatePreview(1.233333)');
+assert.equal(element('title-image').hidden,false,'subsequent playback frames inside the short retain its hook');
+run('seekSource(.9)');
+assert.equal(element('title-image').hidden,true,'the hook does not leak before the selected short');
+run('seekSource(1.3)');
+assert.equal(element('title-image').hidden,true,'the hook does not leak beyond the selected short');
+run('seekSource(1.166667)');
+assert.equal(element('title-image').hidden,false,'returning from the source to the short restores its hook');
+run(`titleLoadedURL='previous-title'; updatePreview(1.166667);`);
+assert.equal(element('title-image').hidden,true,'an old title stays hidden while the selected title loads');
+run(`titleLoadedURL=titleURL; seekFrame(1);`);
 run('updateShotPlayhead(0)');
 assert.match(element('shot-position').textContent, /^00:00\.000 · 1 프레임$/, 'loading never displays negative frames');
 assert.equal(run('preciseTime(59.9996)'), '01:00.000', 'millisecond labels carry into the next minute');
@@ -134,6 +149,27 @@ const updateCount = run('previewUpdates.length');
 oldProjectCallback(0, {mediaTime:1.233333});
 assert.equal(run('previewUpdates.length'), updateCount, 'callbacks from a previous project cannot repaint the new project');
 (async () => {
+  // A title can finish decoding after the user scrubs into/out of the short.
+  let finishTitleDecode, titleDecodeStarted;
+  let decoding = new Promise(resolve => titleDecodeStarted=resolve);
+  context.fetch=async()=>({ok:true,blob:async()=>({})});
+  context.URL={createObjectURL:()=> 'blob:loaded-title',revokeObjectURL(){}};
+  context.Image=class { decode() { titleDecodeStarted(); return new Promise(resolve=>finishTitleDecode=resolve); } };
+  run(`pid='p'; cid='c'; sourcePreview=true; presentedTime=null;`);
+  video.currentTime=.9;
+  const loadingTitle=run('loadTitlePreview(true)');
+  await decoding;
+  video.currentTime=1.166667;
+  finishTitleDecode(); await loadingTitle;
+  assert.equal(element('title-image').hidden,false,'a delayed title load uses the current in-short position');
+  decoding = new Promise(resolve => titleDecodeStarted=resolve);
+  const loadingOutside=run('loadTitlePreview(true)');
+  await decoding;
+  video.currentTime=1.4;
+  finishTitleDecode(); await loadingOutside;
+  assert.equal(element('title-image').hidden,true,'a delayed title load never overlays source footage outside the short');
+  context.fetch=()=>new Promise(()=>{});
+  run('sourcePreview=false;');
   run(`
     pid='p'; cid='c'; selectedShotId='a';
     clip().source_shots=[{id:'a',start:1,end:1.2},{id:'b',start:1.2,end:1.3}];
