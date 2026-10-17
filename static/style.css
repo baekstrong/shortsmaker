@@ -822,11 +822,12 @@ main > header h1 { font-size:22px; margin:3px 0; }
 .timeline-thumb + .timeline-thumb { border-left:1px solid #101314; }
 .timeline-thumb img { display:block; width:100%; height:100%; object-fit:cover; pointer-events:none; }
 .clip-strip { position:relative; min-height:72px; background:#101314; }
-.clip-range { position:absolute; height:64px; min-width:0; border:1px solid #53645d; border-radius:5px; background:#293830; color:#fff; }
-.clip-range.active { border-color:var(--accent); background:#38452c; box-shadow:inset 0 0 0 1px var(--accent); z-index:5; }
+.clip-range { position:absolute; height:64px; min-width:0; border:1px solid #53645d; border-radius:5px; background:#293830; color:#fff; z-index:5; }
+.clip-range.active { border-color:var(--accent); background:#38452c; box-shadow:inset 0 0 0 1px var(--accent); z-index:6; }
 .clip-range.excluded { background:#24282a; border-color:#4a5054; color:#9ca4a7; }
 .clip-range.excluded.active { border-color:var(--accent); }
 .clip-range-body { position:relative; display:block; width:100%; height:100%; min-width:0; border:0; border-radius:4px; padding:0; text-align:left; overflow:hidden; background:transparent; color:inherit; }
+.clip-range-preview { position:absolute; inset:0; overflow:hidden; border-radius:3px; pointer-events:none; }
 .clip-range-images { position:absolute; inset:0; display:flex; opacity:.82; pointer-events:none; }
 .clip-range-body:hover .clip-range-images, .clip-range.active .clip-range-images { opacity:1; }
 .clip-range.excluded .clip-range-images { opacity:.4; }
@@ -836,8 +837,8 @@ main > header h1 { font-size:22px; margin:3px 0; }
 .clip-range-label { font-size:11px; font-weight:700; line-height:1.5; }
 .clip-range-time { font-size:10px; opacity:.8; font-variant-numeric:tabular-nums; }
 .clip-trim-handle { position:absolute; top:0; bottom:0; width:12px; min-width:12px; padding:0; border:0; border-radius:3px; background:transparent; cursor:ew-resize; touch-action:none; user-select:none; z-index:3; }
-.clip-trim-handle[data-edge="start"] { left:0; transform:translateX(-50%); }
-.clip-trim-handle[data-edge="end"] { right:0; transform:translateX(50%); }
+.clip-trim-handle[data-edge="start"] { left:0; }
+.clip-trim-handle[data-edge="end"] { right:0; }
 .clip-trim-handle::after { content:""; position:absolute; top:16px; bottom:16px; left:5px; width:2px; border-radius:1px; background:#81978b; }
 .clip-range.active .clip-trim-handle::after, .clip-trim-handle:hover::after { background:var(--accent); }
 .clip-trim-handle:hover { background:#e7f09b22; }
@@ -932,10 +933,16 @@ main > header h1 { font-size:22px; margin:3px 0; }
 
 .clip-ruler .clip-ruler-end { right:0; left:auto; padding:0 3px; background:#15191b; }
 
-.clip-range.compact .clip-range-body { position:absolute; left:var(--compact-offset,9px); width:66px; border:1px solid #53645d; }
-.clip-range.compact.active .clip-range-body { border-color:var(--accent); }
-.clip-range.compact .clip-range-caption { padding:8px 3px 3px; }
-.clip-range.compact .clip-range-label { font-size:10px; }
-.clip-range.compact .clip-trim-handle[data-edge="start"] { bottom:50%; }
-.clip-range.compact .clip-trim-handle[data-edge="end"] { top:50%; }
-.clip-range.compact .clip-trim-handle::after { top:7px; bottom:7px; }
+.clip-range.compact { border:0; border-radius:0; background:transparent; box-shadow:none; }
+.clip-range.compact::before { content:""; position:absolute; inset:0 auto 0 0; width:max(1px,100%); background:#81978b; pointer-events:none; }
+.clip-range.compact.excluded::before { background:#697175; }
+.clip-range.compact.active::before { background:var(--accent); }
+.clip-range.compact .clip-range-body { position:absolute; left:-6px; width:calc(100% + 6px); overflow:visible; }
+.clip-range.compact .clip-range-body:hover { background:transparent; }
+.clip-range.compact .clip-range-preview { display:none; inset:auto; bottom:calc(100% + 8px); left:var(--compact-offset,6px); width:132px; height:64px; border:1px solid #81978b; background:#202628; box-shadow:0 3px 10px #0009; }
+.clip-range.compact:hover, .clip-range.compact:focus-within { z-index:7; }
+.clip-range.compact:hover .clip-range-preview, .clip-range.compact:focus-within .clip-range-preview { display:block; }
+.clip-range.compact .clip-trim-handle { width:calc(100% + 6px); min-width:6px; height:20px; }
+.clip-range.compact .clip-trim-handle[data-edge="start"] { left:-6px; bottom:auto; }
+.clip-range.compact .clip-trim-handle[data-edge="end"] { top:auto; bottom:0; }
+.clip-range.compact .clip-trim-handle::after { display:none; }

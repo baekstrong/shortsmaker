@@ -602,19 +602,17 @@ async function ensureClipShots() {
   } catch (error) { toast(`원본 컷을 찾지 못했습니다. 원본 컷 찾기로 다시 시도하세요. ${error.message}`); }
 }
 function compactClipOffset(c, duration, width) {
-  return c.start/duration*width+76 > width ? -75 : 9;
+  const start = c.start/duration*width;
+  // The hover preview is independent of the range and stays within the ruler.
+  return Math.max(6-start,Math.min(-60,width-start-126));
 }
-function overviewRows(clips, duration, width) {
+function overviewRows(clips) {
   const ends = [];
   return clips.map((c, index) => ({c,index})).sort((a,b) => a.c.start-b.c.start || a.index-b.index).map(item => {
-    // Separate overlapping clips, including handles on very short adjacent clips.
-    const units = duration/Math.max(1,width);
-    const compact = (item.c.end-item.c.start)/units < 42;
-    const offset = compact ? compactClipOffset(item.c,duration,width) : 0;
-    const left = Math.min(item.c.start,item.c.start+offset*units);
-    let row = ends.findIndex(end => end <= left);
+    // Only overlapping source times need another row; labels never reserve time.
+    let row = ends.findIndex(end => end <= item.c.start);
     if (row < 0) row = ends.length;
-    ends[row] = Math.max(item.c.end,item.c.start+(compact ? offset+66 : 76)*units);
+    ends[row] = item.c.end;
     return {...item,row};
   });
 }
@@ -644,10 +642,10 @@ function renderClipTimeline() {
     $('source-filmstrip').dataset.key = filmstripKey;
     $('source-filmstrip').innerHTML = timelineImages(0,duration,width);
   }
-  const rows = overviewRows(p.clips, duration, width);
+  const rows = overviewRows(p.clips);
   $('clip-strip').style.height = `${Math.max(1,...rows.map(r=>r.row+1))*72}px`;
   $('clip-strip').innerHTML = rows.map(({c,index,row}) => `<div class="clip-range${c.id===cid?' active':''}${!c.included?' excluded':''}${(c.end-c.start)/duration*width<42?' compact':''}" data-clip-id="${esc(c.id)}" style="left:${100*c.start/duration}%;width:${100*(c.end-c.start)/duration}%;top:${row*72+4}px;--compact-offset:${compactClipOffset(c,duration,width)}px" title="쇼츠 ${index+1} · ${esc(c.title)} · ${preciseTime(c.start)} ~ ${preciseTime(c.end)}">
-    <button class="clip-range-body" data-select-clip="${esc(c.id)}" aria-pressed="${c.id===cid}" aria-label="쇼츠 ${index+1} 선택: ${esc(c.title)}"><span class="clip-range-images" aria-hidden="true">${timelineImages(c.start,c.end,(c.end-c.start)/duration*width,8)}</span><span class="clip-range-caption"><span class="clip-range-label">쇼츠 ${index+1}${!c.included?' · 제외':''}</span><span class="clip-range-time">${(c.end-c.start).toFixed(1)}초</span></span></button>
+    <button class="clip-range-body" data-select-clip="${esc(c.id)}" aria-pressed="${c.id===cid}" aria-label="쇼츠 ${index+1} 선택: ${esc(c.title)}"><span class="clip-range-preview"><span class="clip-range-images" aria-hidden="true">${timelineImages(c.start,c.end,(c.end-c.start)/duration*width,8)}</span><span class="clip-range-caption"><span class="clip-range-label">쇼츠 ${index+1}${!c.included?' · 제외':''}</span><span class="clip-range-time">${(c.end-c.start).toFixed(1)}초</span></span></span></button>
     <button class="clip-trim-handle" data-edge="start" aria-label="쇼츠 ${index+1} 시작 조정" title="드래그로 시작 조정 · 방향키로 한 프레임" ${busy()?'disabled':''}></button>
     <button class="clip-trim-handle" data-edge="end" aria-label="쇼츠 ${index+1} 끝 조정" title="드래그로 끝 조정 · 방향키로 한 프레임" ${busy()?'disabled':''}></button></div>`).join('');
 }

@@ -204,8 +204,17 @@ assert.equal(run('previewUpdates.length'), updateCount, 'callbacks from a previo
   const beforeConflict=run('savedBounds.length');
   await assert.rejects(run("saveClipBounds({pid,cid,original:{start:10,end:30},start:12,end:30})"),/다른 편집/);
   assert.equal(run('savedBounds.length'),beforeConflict,'concurrent range changes are rejected');
-  const rows=JSON.parse(run("JSON.stringify(overviewRows([{start:0,end:20},{start:10,end:30},{start:40,end:60}],100,1000))"));
+  const rows=JSON.parse(run("JSON.stringify(overviewRows([{start:0,end:20},{start:10,end:30},{start:40,end:60}]))"));
   assert.deepEqual(rows.map(r=>r.row),[0,1,0],'overlapping shorts remain independently selectable');
-  assert.equal(run('compactClipOffset({start:99,end:100},100,1000)'),-75,'short clips near source end keep their preview inside the timeline');
+  const adjacent=JSON.parse(run("JSON.stringify(overviewRows([{start:92.52,end:162.12},{start:33.94,end:34.19,included:false},{start:34.19,end:89.24}]))"));
+  assert.deepEqual(adjacent.map(r=>r.row),[0,0,0],'the excluded 0.25-second short never pushes its adjacent short into another row');
+  assert.deepEqual(adjacent.map(r=>r.index),[1,2,0],'time ordering preserves original short numbers');
+  const small=JSON.parse(run("JSON.stringify(overviewRows([{start:0,end:.25},{start:.25,end:.5},{start:.49,end:.8}]))"));
+  assert.deepEqual(small.map(r=>r.row),[0,0,1],'touching short ranges share a row, while even a tiny real overlap gets another');
+  for (const width of [320,600,1000]) for (const start of [0,33.94,99.9]) {
+    const offset=run(`compactClipOffset({start:${start},end:100},100,${width})`);
+    const left=start/100*width-6+offset;
+    assert.ok(left>=0 && left+132<=width,'compact hover preview stays inside both source edges without reserving time');
+  }
   console.log('Cut editor: frame timing, cut/source timeline drags, trim save/cancel/conflict, selection/save isolation, and callback lifecycle passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
