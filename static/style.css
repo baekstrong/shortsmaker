@@ -843,9 +843,10 @@ main > header h1 { font-size:22px; margin:3px 0; }
 .clip-range.active .clip-trim-handle::after, .clip-trim-handle:hover::after { background:var(--accent); }
 .clip-trim-handle:hover { background:#e7f09b22; }
 .clip-trim-handle:focus-visible { outline-offset:1px; background:#e7f09b33; }
-.clip-playhead { position:absolute; top:0; bottom:0; width:17px; transform:translateX(-50%); z-index:4; cursor:ew-resize; touch-action:none; user-select:none; }
-.clip-playhead::before { content:""; position:absolute; left:4px; width:9px; height:10px; background:var(--yellow); clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); }
-.clip-playhead::after { content:""; position:absolute; left:8px; top:0; bottom:0; width:1px; background:var(--yellow); }
+/* Lift only the visible marker above clips; its wide hit area stays below trim handles. */
+.clip-playhead { position:absolute; top:0; bottom:0; width:17px; margin-left:-8.5px; cursor:ew-resize; touch-action:none; user-select:none; }
+.clip-playhead::before { content:""; position:absolute; left:4px; width:9px; height:10px; background:var(--yellow); clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); z-index:8; }
+.clip-playhead::after { content:""; position:absolute; left:8px; top:0; bottom:0; width:1px; background:var(--yellow); z-index:8; pointer-events:none; }
 .clip-timeline.trimming, .clip-timeline.trimming *, .clip-timeline.scrubbing, .clip-timeline.scrubbing * { cursor:ew-resize; user-select:none; }
 #clip-trim-status { min-height:18px; margin:7px 0 0; font-size:11px; }
 .clip-timeline-scroll:focus-visible, .shot-timeline-scroll:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
