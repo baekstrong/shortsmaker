@@ -821,7 +821,22 @@ main > header h1 { font-size:22px; margin:3px 0; }
 .timeline-thumb { display:block; flex:1; min-width:0; height:100%; overflow:hidden; background:#29332d; }
 .timeline-thumb + .timeline-thumb { border-left:1px solid #101314; }
 .timeline-thumb img { display:block; width:100%; height:100%; object-fit:cover; pointer-events:none; }
-.clip-strip { position:relative; min-height:72px; background:#101314; }
+.clip-strip { position:relative; min-height:72px; background:#101314; cursor:crosshair; touch-action:none; user-select:none; }
+.clip-selection { position:absolute; top:94px; bottom:4px; min-width:1px; border:2px solid var(--accent); border-radius:5px; background:#647b3d66; z-index:6; touch-action:none; }
+.clip-selection .clip-range-images { overflow:hidden; border-radius:3px; opacity:.65; }
+.clip-selection-label { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; overflow:hidden; white-space:nowrap; color:#fff; font-size:12px; font-weight:700; text-shadow:0 1px 4px #000; pointer-events:none; }
+.clip-trim-handle[data-selection-edge="start"] { left:-2px; }
+.clip-trim-handle[data-selection-edge="end"] { right:-2px; }
+.clip-selection .clip-trim-handle::after { background:var(--accent); }
+.clip-selection.narrow .clip-trim-handle { height:50%; width:16px; min-width:16px; }
+.clip-selection.narrow [data-selection-edge="start"] { top:0; bottom:auto; left:-8px; }
+.clip-selection.narrow [data-selection-edge="end"] { top:auto; bottom:0; right:-8px; }
+.clip-selection.narrow .clip-trim-handle::after { top:4px; bottom:4px; }
+.clip-add-panel { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-top:10px; padding:12px; border:1px solid #778648; border-radius:8px; background:#232b1c; }
+.clip-add-panel strong { display:block; color:var(--accent); font-size:13px; font-variant-numeric:tabular-nums; margin-bottom:5px; }
+.clip-add-panel small { display:block; font-size:11px; }
+.clip-add-panel .row { flex-wrap:wrap; }
+.clip-add-panel button, #retry-clip-prepare { font-size:12px; }
 .clip-range { position:absolute; height:64px; min-width:0; border:1px solid #53645d; border-radius:5px; background:#293830; color:#fff; z-index:5; }
 .clip-range.active { border-color:var(--accent); background:#38452c; box-shadow:inset 0 0 0 1px var(--accent); z-index:6; }
 .clip-range.excluded { background:#24282a; border-color:#4a5054; color:#9ca4a7; }

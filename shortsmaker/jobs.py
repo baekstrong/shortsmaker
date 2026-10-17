@@ -260,6 +260,7 @@ class Jobs:
                 ctx.check()
                 label = {
                     "prepare": "자동 준비",
+                    "prepare_clip": "새 쇼츠의 원본 컷·후킹 문구·화면 구도 준비",
                     "publish_plan": "인코딩·발행 예약",
                     "analyze": "내용 분석·분할",
                     "content_edit": "불필요한 발언 편집",

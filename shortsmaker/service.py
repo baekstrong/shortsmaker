@@ -10,7 +10,7 @@ from pathlib import Path
 from .parallel import parallel_tasks
 from . import ai, media
 from .store import uid
-from .timeline import validate_cuts, trim_cuts
+from .timeline import validate_cuts, trim_cuts, transcript_for
 from .shot_editing import edit_shot, trim_shots
 
 
@@ -104,7 +104,7 @@ class Service:
     def __init__(self, store, jobs):
         self.store, self.jobs = store, jobs
         self._source_checks = set()
-        for kind in ("analyze", "hooks", "framing", "shots", "encode"):
+        for kind in ("analyze", "hooks", "framing", "shots", "prepare_clip", "encode"):
             jobs.handlers[kind] = getattr(self, kind)
 
     def source(self, p):
@@ -145,6 +145,13 @@ class Service:
             def update(p):
                 if not self.same_media(p["metadata"], metadata):
                     raise ValueError("기존 원본과 크기·길이·영상 정보가 다릅니다. 같은 원본 영상을 선택해 주세요.")
+                for clip in p["clips"]:
+                    state = clip.get("gap_preparation")
+                    if (isinstance(state, dict) and state.get("status") != "complete"
+                            and state.get("resume_revision") == p["revision"]):
+                        # Reconnecting identical media does not change edits.
+                        # Never revive a checkpoint invalidated by an earlier edit.
+                        state["resume_revision"] = p["revision"] + 1
                 p.update(source=str(path), metadata=metadata)
             return self.store.change(pid, update)
 
@@ -236,7 +243,7 @@ class Service:
                 validate_clip(c, project["metadata"]["duration"])
         self.store.change(pid, save, revision=p["revision"], history=True)
 
-    def hooks(self, ctx, pid, args):
+    def hooks(self, ctx, pid, args, *, _history=True):
         from .editing import hook_images
         p = self.store.load(pid)
         self.source(p)
@@ -274,9 +281,9 @@ class Service:
                     recommended = result["hooks"][result["recommended_index"]]
                     c.update(hook=recommended["text"], yellow=recommended["yellow_phrase"], confirmed=False)
                 validate_clip(c, project["metadata"]["duration"])
-        self.store.change(pid, save, revision=p["revision"], history=True)
+        return self.store.change(pid, save, revision=p["revision"], history=_history)
 
-    def framing(self, ctx, pid, args):
+    def framing(self, ctx, pid, args, *, _history=True):
         from . import framing
 
         p = self.store.load(pid)
@@ -293,6 +300,7 @@ class Service:
                 i * 100 / len(clips),
                 (i + 1) * 100 / len(clips),
             )
+            ctx.check()
 
             def save(project):
                 c = next(c for c in project["clips"] if c["id"] == clip["id"])
@@ -301,8 +309,9 @@ class Service:
                     c["source_shots"] = clip["source_shots"]
                 validate_clip(c, project["metadata"]["duration"])
 
-            self.store.change(pid, save, revision=p["revision"], history=True)
+            self.store.change(pid, save, revision=p["revision"], history=_history)
             p = self.store.load(pid)
+        return p
 
     def shots(self, ctx, pid, args):
         from .shots import detect_shots, ensure_thumbnails
@@ -320,6 +329,7 @@ class Service:
                 ensure_thumbnails(ctx, p["source"], clip, result, folder)
             else:
                 result = detect_shots(ctx, p, clip, folder)
+            ctx.check()
 
             def save(project):
                 c = next(c for c in project["clips"] if c["id"] == clip["id"])
@@ -331,6 +341,67 @@ class Service:
             self.store.change(pid, save, revision=p["revision"],
                               history=not args.get("automatic", False))
             p = self.store.load(pid)
+        return p
+
+    def prepare_clip(self, ctx, pid, args):
+        """Prepare only a manually added gap, keeping its creation as one undo."""
+        from .jobs import Cancelled
+
+        ids = args.get("clip_ids")
+        if not isinstance(ids, list) or len(ids) != 1 or not isinstance(ids[0], str):
+            raise ValueError("자동 준비할 새 쇼츠 하나를 선택해 주세요.")
+        p = self.store.load(pid)
+        clip = next((c for c in p["clips"] if c["id"] == ids[0]), None)
+        state = clip.get("gap_preparation") if clip else None
+        if not isinstance(state, dict):
+            raise ValueError("빈 구간에서 추가한 새 쇼츠만 자동 준비할 수 있습니다.")
+        if state.get("status") == "complete":
+            return
+        expected_revision = state.get("resume_revision")
+        if expected_revision != p["revision"]:
+            raise ValueError("새 쇼츠를 추가한 뒤 편집 내용이 바뀌었습니다. 필요한 개별 단계를 실행해 주세요.")
+        completed = list(state.get("completed", []))
+        stages = ("shots", "hooks", "framing")
+        if completed != list(stages[:len(completed)]):
+            raise ValueError("새 쇼츠의 준비 기록을 확인해 주세요.")
+
+        def checkpoint(status):
+            nonlocal expected_revision
+
+            def save(project):
+                c = next(c for c in project["clips"] if c["id"] == ids[0])
+                c["gap_preparation"] = dict(status=status, completed=list(completed),
+                                            resume_revision=project["revision"] + 1)
+
+            saved = self.store.change(pid, save, revision=expected_revision)
+            expected_revision = saved["revision"]
+            args.update(completed=list(completed), resume_revision=expected_revision)
+            ctx.manager.update(ctx.job["id"], args=copy.deepcopy(args))
+
+        try:
+            for stage, label in (("shots", "원본 컷 찾기"), ("hooks", "후킹 문구 제안"),
+                                 ("framing", "화면 구도 제안")):
+                ctx.check()
+                if stage in completed:
+                    continue
+                ctx.progress("새 쇼츠 자동 준비 · " + label)
+                if stage == "shots":
+                    saved = self.shots(ctx, pid, dict(clip_ids=ids, automatic=True))
+                else:
+                    if stage == "hooks":
+                        current = self.store.load(pid)
+                        selected = next(c for c in current["clips"] if c["id"] == ids[0])
+                        if not transcript_for(current, selected):
+                            raise ValueError("선택한 구간의 전사 내용이 없어 후킹 문구를 만들 수 없습니다. 전사 결과를 확인하거나 문구를 직접 입력해 주세요.")
+                    saved = getattr(self, stage)(ctx, pid, dict(clip_ids=ids), _history=False)
+                expected_revision = saved["revision"]
+                completed.append(stage)
+                checkpoint("complete" if stage == "framing" else "running")
+        except Exception as exc:
+            # Do not bless concurrent user changes as a safe resume revision.
+            if self.store.load(pid)["revision"] == expected_revision:
+                checkpoint("cancelled" if isinstance(exc, Cancelled) else "failed")
+            raise
 
     def encode(self, ctx, pid, args):
         p = self.store.load(pid)
@@ -384,9 +455,22 @@ class Service:
                 p["clips"] = p["history"].pop()
                 return
             p["history"] = (p.get("history", []) + [copy.deepcopy(p["clips"])])[-30:]
-            if action == "add":
+            if action in ("add", "add_gap"):
+                if action == "add_gap":
+                    start, end = body.get("start"), body.get("end")
+                    if (not all(isinstance(t, (int, float)) and not isinstance(t, bool)
+                                and math.isfinite(t) for t in (start, end))
+                            or not 0 <= start < end <= p["metadata"]["duration"]):
+                        raise ValueError("추가할 구간은 원본 영상 범위 안에서 선택해 주세요.")
+                    if not .1 - 1e-6 <= end - start <= 180 + 1e-6:
+                        raise ValueError("새 쇼츠 길이는 0.1초 이상, 3분 이하로 선택해 주세요.")
+                    if any(start < old["end"] and end > old["start"] for old in p["clips"]):
+                        raise ValueError("기존 쇼츠와 겹칩니다. 빈 구간 안에서 선택해 주세요.")
                 c = new_clip(body["start"], body["end"], "직접 추가한 구간")
                 validate_clip(c, p["metadata"]["duration"])
+                if action == "add_gap":
+                    c["gap_preparation"] = dict(status="pending", completed=[],
+                                                resume_revision=p["revision"] + 1)
                 p["clips"].append(c)
                 p["clips"].sort(key=lambda c: c["start"])
                 return

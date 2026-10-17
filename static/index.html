@@ -102,16 +102,27 @@
         <section id="clip-timeline-editor" class="clip-timeline-editor" aria-label="전체 영상의 쇼츠 구간" hidden>
           <div class="pane-heading">
             <div><h2>전체 영상 · 쇼츠 구간</h2><small id="clip-timeline-summary" class="muted"></small></div>
-            <span class="muted">양끝을 드래그해 길이 조정</span>
+            <span class="muted">빈 구간 드래그 → 쇼츠 추가 · 양끝 드래그 → 길이 조정</span>
           </div>
           <div id="clip-timeline-scroll" class="clip-timeline-scroll" tabindex="0" aria-label="전체 영상 타임라인 · 쇼츠를 선택하고 양끝 손잡이로 길이 조정">
             <div id="clip-timeline" class="clip-timeline">
               <div id="clip-ruler" class="clip-ruler"></div>
               <div id="source-filmstrip" class="source-filmstrip" aria-label="원본 전체 장면 미리보기" title="클릭하거나 드래그해서 원본 장면 확인"></div>
-              <div id="clip-strip" class="clip-strip"></div>
+              <div id="clip-strip" class="clip-strip" title="빈 구간을 드래그해 새 쇼츠 범위를 선택하세요"></div>
+              <div id="clip-selection" class="clip-selection" hidden>
+                <div id="clip-selection-images" class="clip-range-images" aria-hidden="true"></div>
+                <span class="clip-selection-label">새 쇼츠</span>
+                <button class="clip-trim-handle" data-selection-edge="start" aria-label="새 쇼츠 시작 조정" title="드래그 또는 방향키로 시작 조정"></button>
+                <button class="clip-trim-handle" data-selection-edge="end" aria-label="새 쇼츠 끝 조정" title="드래그 또는 방향키로 끝 조정"></button>
+              </div>
               <div id="clip-playhead" class="clip-playhead" role="slider" tabindex="0" aria-label="전체 영상 재생 위치" aria-orientation="horizontal" title="드래그해서 영상 위치 이동"></div>
             </div>
           </div>
+          <div id="clip-add-panel" class="clip-add-panel" hidden>
+            <div><strong id="clip-add-range"></strong><small class="muted">양끝으로 범위를 조정하세요 · 최대 3분<br />추가하면 원본 컷·후킹 문구·화면 구도 제안을 자동으로 준비합니다.</small></div>
+            <div class="row"><button id="confirm-add-clip" class="primary">이 구간으로 쇼츠 추가</button><button id="cancel-add-clip" class="quiet">취소</button></div>
+          </div>
+          <button id="retry-clip-prepare" class="quiet" hidden>새 쇼츠 자동 준비 재시도</button>
           <p id="clip-trim-status" class="muted" role="status">쇼츠 구간을 선택하면 아래에서 원본 컷마다 화면 구도를 조정할 수 있습니다.</p>
         </section>
         <section id="shot-editor" class="shot-editor" aria-label="원본 컷 타임라인" hidden>

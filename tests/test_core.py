@@ -98,6 +98,7 @@ def test_information_suggestions_never_change_render_or_manual_edit(tmp_path, mo
     monkeypatch.setattr(service, "source", lambda p: None)
     class Context:
         def progress(self, *args): pass
+        def check(self): pass
     service.framing(Context(), p["id"], {})
     updated = store.load(p["id"])
     assert updated["clips"][0]["manual_frame"] == c["manual_frame"]
@@ -264,7 +265,7 @@ def test_information_analysis_only_suggests_and_time_edit_does_not_apply(tmp_pat
     store.change(p['id'], lambda p: p.update(clips=[c]))
     monkeypatch.setattr(service, 'source', lambda p: None)
     monkeypatch.setattr(framing, 'analyze', lambda *args: [dict(id='left', start=2, end=4, zoom=1.2, center=0)])
-    service.framing(SimpleNamespace(progress=lambda *args: None), p['id'], {})
+    service.framing(SimpleNamespace(progress=lambda *args: None, check=lambda: None), p['id'], {})
     p = store.load(p['id'])
     assert p['clips'][0]['frame_suggestions'][0]['center'] == 0
     assert p['clips'][0]['frame_overrides'] == []
@@ -274,7 +275,7 @@ def test_information_analysis_only_suggests_and_time_edit_does_not_apply(tmp_pat
     assert render_key(p, p['clips'][0]) == original
     p = service.edit(p['id'], dict(action='frame_region', clip_id=c['id'], suggestion_id='left', frame=dict(zoom=1.2, center=0)))
     assert [(f['start'], f['end']) for f in scenes_for(p['clips'][0])] == [(0,3),(3,5),(5,10)]
-    service.framing(SimpleNamespace(progress=lambda *args: None), p['id'], {})
+    service.framing(SimpleNamespace(progress=lambda *args: None, check=lambda: None), p['id'], {})
     assert store.load(p['id'])['clips'][0]['frame_overrides'] == p['clips'][0]['frame_overrides']
 
 

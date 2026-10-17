@@ -148,7 +148,7 @@ def test_ai_refresh_saves_shots_but_does_not_apply_them(editor, monkeypatch):
         clip['source_shots'][0]['boundary_kind'] = 'detected'
         return [dict(id='new', start=0, end=1, zoom=1.5, center=0)]
     monkeypatch.setattr(framing, 'analyze', analyze)
-    service.framing(SimpleNamespace(progress=lambda *args: None), p['id'], {})
+    service.framing(SimpleNamespace(progress=lambda *args: None, check=lambda: None), p['id'], {})
     saved = service.store.load(p['id'])['clips'][0]
     assert saved['source_shots'][0]['boundary_kind'] == 'detected'
     assert saved['frame_overrides'] == []

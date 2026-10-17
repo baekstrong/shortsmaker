@@ -18,7 +18,7 @@ def validate_cuts(clip):
                 or not isinstance(cut.get("reason"), str) or not cut["reason"].strip()):
             raise ValueError("삭제 구간의 시간·순서·이유를 확인해 주세요.")
         last = b
-    if clip_duration(clip) < .1:
+    if clip_duration(clip) < .1 - 1e-6:
         raise ValueError("쇼츠 전체를 삭제할 수 없습니다. 남길 내용을 확인해 주세요.")
 
 

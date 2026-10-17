@@ -145,7 +145,7 @@ def test_shot_detection_can_edit_explicit_excluded_short_but_batch_skips_it(edit
 
     monkeypatch.setattr(shots, 'detect_shots', detect)
     args = dict(clip_ids=[excluded['id']]) if explicit else {}
-    service.shots(SimpleNamespace(progress=lambda *args: None), project['id'], args)
+    service.shots(SimpleNamespace(progress=lambda *args: None, check=lambda: None), project['id'], args)
     saved = service.store.load(project['id'])
     assert detected == [excluded['id'] if explicit else included['id']]
     assert not saved['clips'][0]['included']
@@ -169,7 +169,7 @@ def test_automatic_cut_detection_does_not_add_an_undo_step_after_trim(editor, mo
     args = dict(clip_ids=[before['clips'][0]['id']])
     if automatic:
         args['automatic'] = True
-    service.shots(SimpleNamespace(progress=lambda *args: None), before['id'], args)
+    service.shots(SimpleNamespace(progress=lambda *args: None, check=lambda: None), before['id'], args)
     detected = service.store.load(before['id'])
     assert detected['clips'][0]['source_shots'][0]['end'] == 4
     assert len(detected['history']) == (1 if automatic else 2)

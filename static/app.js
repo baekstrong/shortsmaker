@@ -37,6 +37,7 @@ let selectedShotId = null;
 let shotTimelineKey = "", shotFrameCache = { key:"", times:[] };
 let shotScrub = null;
 let clipInteraction = null, clipTimelineKey = "", sourcePreview = false, selectFirstShot = true;
+let clipAddDraft = null, clipCreationPending = false;
 let presentedTime = null;
 let trimDraft = null;
 let frameDraft = null;
@@ -222,6 +223,7 @@ async function refresh() {
 }
 function selectProject(id) {
   cancelClipInteraction();
+  clearClipAddDraft();
   sourcePreview = false;
   selectFirstShot = true;
   flushTitleDraft();
@@ -577,6 +579,7 @@ function configureFrameInputs() {
 function selectClip(id) {
   if (!project()?.clips.some(c => c.id === id)) return;
   cancelClipInteraction();
+  clearClipAddDraft();
   flushTitleDraft();
   cancelDrag();
   endShotScrub();
@@ -594,7 +597,7 @@ function selectClip(id) {
 const requestedClipShots = new Set();
 async function ensureClipShots() {
   const c = clip();
-  if (!c || sourceShots().length || busy() || mutating || clipInteraction) return;
+  if (!c || sourceShots().length || busy() || mutating || clipInteraction || clipCreationPending || (c.gap_preparation && c.gap_preparation.status!=='complete')) return;
   const key = `${pid}/${cid}/${c.start}/${c.end}`;
   if (requestedClipShots.has(key)) return;
   requestedClipShots.add(key);
@@ -628,13 +631,107 @@ function timelineImages(start, end, width, limit=24) {
     return `<span class="timeline-thumb" title="${preciseTime(at)}"><img src="/api/projects/${pid}/timeline.jpg?time=${at}" alt="" loading="lazy" decoding="async" draggable="false"></span>`;
   }).join('');
 }
+// Empty space is the complement of every saved range, including excluded shorts.
+function sourceGaps(p = project()) {
+  if (!p) return [];
+  const gaps = [];
+  let end = 0;
+  for (const c of [...p.clips].sort((a,b)=>a.start-b.start)) {
+    if (c.start-end >= .1-1e-6) gaps.push({start:end,end:c.start});
+    end = Math.max(end,c.end);
+  }
+  if (p.metadata.duration-end >= .1-1e-6) gaps.push({start:end,end:p.metadata.duration});
+  return gaps;
+}
+function gapAt(at) {
+  return sourceGaps().find(gap=>at>=gap.start && at<gap.end);
+}
+function clearClipAddDraft() {
+  clipAddDraft = null;
+  renderClipAddDraft();
+}
+function renderClipAddDraft(images = false) {
+  const d = clipAddDraft, p = project();
+  const visible = !!d && d.pid===pid && d.revision===p?.revision && !busy() && !clipCreationPending;
+  $('clip-selection').hidden = $('clip-add-panel').hidden = !visible;
+  if (!visible) return;
+  const width = $('clip-timeline').clientWidth || 600;
+  $('clip-selection').style.left = `${100*d.start/p.metadata.duration}%`;
+  $('clip-selection').style.width = `${100*(d.end-d.start)/p.metadata.duration}%`;
+  $('clip-selection').classList.toggle('narrow',(d.end-d.start)/p.metadata.duration*width<32);
+  $('clip-add-range').textContent = `새 쇼츠 · ${preciseTime(d.start)} ~ ${preciseTime(d.end)} · ${(d.end-d.start).toFixed(3)}초`;
+  $('confirm-add-clip').disabled = !!clipInteraction || d.end-d.start<.1-1e-6 || mutating;
+  if (images) $('clip-selection-images').innerHTML = timelineImages(d.start,d.end,(d.end-d.start)/p.metadata.duration*width,4);
+}
+function draftBounds(d, edge, at) {
+  if (edge==='start') return {start:Math.max(d.gap.start,d.end-180,Math.min(d.end-.1,at)),end:d.end};
+  return {start:d.start,end:Math.min(d.gap.end,d.start+180,Math.max(d.start+.1,at))};
+}
+function startClipAdd(event, edge = null) {
+  if (event.button!==0 || event.isPrimary===false || busy() || mutating || clipInteraction || clipCreationPending) return;
+  const at = sourceTimeAt(event), gap = edge ? clipAddDraft?.gap : gapAt(at);
+  if (!gap) return;
+  event.preventDefault();
+  const originalDraft = clipAddDraft ? {...clipAddDraft} : null;
+  const anchor = Math.max(gap.start,Math.min(gap.end,snapSourceTime(at)));
+  if (!edge) {
+    clipAddDraft = {pid,revision:project().revision,gap,start:anchor,end:anchor};
+    $('clip-selection-images').innerHTML = '';
+  }
+  clipInteraction = {pid,cid,kind:'add',edge,anchor,originalDraft,pointerId:event.pointerId,
+    offset:edge ? at-clipAddDraft[edge] : 0};
+  $('clip-timeline').setPointerCapture(event.pointerId);
+  $('clip-timeline-scroll').focus({preventScroll:true});
+  $('video').pause();
+  moveClipInteraction(event);
+}
+async function prepareAddedClip(target) {
+  await api(`/api/projects/${target.pid}/jobs/prepare_clip`, {clip_ids:[target.cid]});
+  await refresh();
+  if (pid===target.pid) render();
+}
+async function confirmClipAdd() {
+  const draft = clipAddDraft;
+  if (!draft || draft.pid!==pid || clipInteraction || clipCreationPending || busy() || mutating) return;
+  if (draft.revision!==project().revision) { clearClipAddDraft(); throw Error('편집 내용이 바뀌었습니다. 빈 구간을 다시 선택해 주세요.'); }
+  const target = {pid,cid}, previousIds = new Set(project().clips.map(c=>c.id));
+  clipCreationPending = true;
+  renderClipAddDraft();
+  try {
+    flushTitleDraft();
+    await edit('add_gap',{start:draft.start,end:draft.end},target);
+    const added = state.projects.find(p=>p.id===target.pid)?.clips.find(c=>!previousIds.has(c.id));
+    if (!added) throw Error('추가한 쇼츠를 찾지 못했습니다. 화면을 새로고침해 주세요.');
+    target.cid = added.id;
+    if (pid===target.pid) selectClip(added.id);
+    try { await prepareAddedClip(target); }
+    catch (error) { throw Error(`쇼츠는 추가했습니다. 자동 준비 재시도로 이어서 진행하세요. ${error.message}`); }
+  } finally {
+    clipCreationPending = false;
+    render();
+  }
+}
+$('confirm-add-clip').onclick = safe(confirmClipAdd);
+$('cancel-add-clip').onclick = () => { cancelClipInteraction(); clearClipAddDraft(); };
+$('retry-clip-prepare').onclick = safe(async () => {
+  if (busy() || clipCreationPending || !clip()) return;
+  clipCreationPending = true;
+  try { await prepareAddedClip({pid,cid}); } finally { clipCreationPending=false; render(); }
+});
+$('clip-selection').onpointerdown = event => {
+  const handle = event.target.closest('[data-selection-edge]');
+  if (handle && clipAddDraft) startClipAdd(event,handle.dataset.selectionEdge);
+};
 function renderClipTimeline() {
   const p = project();
   if (clipInteraction && (!p || clipInteraction.pid !== pid || clipInteraction.cid !== cid || busy() || mutating)) cancelClipInteraction();
   $('clip-timeline-editor').hidden = !p;
+  if (clipAddDraft && (clipAddDraft.pid!==pid || clipAddDraft.revision!==p?.revision || busy())) clipAddDraft=null;
+  renderClipAddDraft();
   if (!p) return;
   const duration = p.metadata.duration, width = $('clip-timeline').clientWidth || 600;
   const c = clip();
+  $('retry-clip-prepare').hidden = !c?.gap_preparation || c.gap_preparation.status==='complete' || busy() || clipCreationPending;
   $('clip-timeline-summary').textContent = `원본 전체 ${preciseTime(duration)} · 쇼츠 ${p.clips.length}개${c ? ` · 선택: 쇼츠 ${p.clips.indexOf(c)+1} · ${preciseTime(c.start)} ~ ${preciseTime(c.end)}` : ''}`;
   if (clipInteraction) return;
   const key = `${pid}/${cid}/${p.revision}/${busy()}/${width}`;
@@ -681,6 +778,18 @@ function moveClipInteraction(event) {
   if (!drag || event.pointerId !== drag.pointerId) return;
   if (pid !== drag.pid || cid !== drag.cid || busy() || mutating) { cancelClipInteraction(); return; }
   event.preventDefault();
+  if (drag.kind==='add') {
+    const at = snapSourceTime(sourceTimeAt(event)-drag.offset), d=clipAddDraft;
+    if (!d) { cancelClipInteraction(); return; }
+    if (drag.edge) Object.assign(d,draftBounds(d,drag.edge,at));
+    else {
+      const end = Math.max(d.gap.start,drag.anchor-180,Math.min(d.gap.end,drag.anchor+180,at));
+      d.start=Math.min(drag.anchor,end); d.end=Math.max(drag.anchor,end);
+    }
+    renderClipAddDraft();
+    seekSource(drag.edge ? d[drag.edge] : (at<drag.anchor ? d.start : d.end));
+    return;
+  }
   if (drag.edge && !drag.moved && Math.abs(event.clientX-drag.startX)<1) return;
   drag.moved = true;
   const at = snapSourceTime(sourceTimeAt(event)-drag.offset);
@@ -705,7 +814,8 @@ function releaseClipInteraction() {
 function cancelClipInteraction(event) {
   if (!clipInteraction || (event?.pointerId !== undefined && event.pointerId !== clipInteraction.pointerId)) return;
   const drag = releaseClipInteraction();
-  if (drag.edge && drag.pid===pid && drag.cid===cid) seekFrame(Math.max(clip().start,Math.min(clip().end,drag.before)));
+  if (drag.kind==='add') { clipAddDraft = drag.originalDraft; renderClipAddDraft(true); }
+  else if (drag.edge && drag.pid===pid && drag.cid===cid) seekFrame(Math.max(clip().start,Math.min(clip().end,drag.before)));
   clipTimelineKey = '';
   $('clip-trim-status').textContent = '';
   renderClipTimeline();
@@ -723,6 +833,11 @@ async function finishClipInteraction(event) {
   moveClipInteraction(event);
   const drag = releaseClipInteraction();
   if (!drag) return;
+  if (drag.kind==='add') {
+    if (clipAddDraft && clipAddDraft.end-clipAddDraft.start<.1-1e-6) clearClipAddDraft();
+    else renderClipAddDraft(true);
+    return;
+  }
   if (!drag.edge) return;
   try {
     await saveClipBounds(drag);
@@ -747,7 +862,9 @@ $('clip-strip').onclick = event => {
 };
 $('clip-strip').onpointerdown = event => {
   const handle = event.target.closest('[data-edge]');
-  if (!handle || event.button!==0 || event.isPrimary===false || busy() || mutating || clipInteraction) return;
+  if (!handle && !event.target.closest('[data-clip-id]')) { startClipAdd(event); return; }
+  if (!handle || event.button!==0 || event.isPrimary===false || busy() || mutating || clipInteraction || clipCreationPending) return;
+  clearClipAddDraft();
   event.preventDefault();
   const id = handle.closest('[data-clip-id]').dataset.clipId;
   if (id!==cid) selectClip(id);
@@ -774,7 +891,14 @@ $('clip-timeline').onpointercancel = cancelClipInteraction;
 $('clip-timeline').onlostpointercapture = cancelClipInteraction;
 window.addEventListener('blur',()=>cancelClipInteraction());
 $('clip-timeline-scroll').onkeydown = safe(async event => {
-  if (event.key==='Escape') return cancelClipInteraction();
+  if (event.key==='Escape') { event.preventDefault(); if (clipInteraction) cancelClipInteraction(); else clearClipAddDraft(); return; }
+  const draftHandle = event.target.closest('[data-selection-edge]');
+  if (draftHandle && clipAddDraft && ['ArrowLeft','ArrowRight'].includes(event.key) && !busy() && !mutating && !clipInteraction) {
+    event.preventDefault();
+    const edge=draftHandle.dataset.selectionEdge;
+    Object.assign(clipAddDraft,draftBounds(clipAddDraft,edge,snapSourceTime(clipAddDraft[edge]+(event.key==='ArrowLeft'?-1:1)/sourceFps())));
+    renderClipAddDraft(true); seekSource(clipAddDraft[edge]); return;
+  }
   const handle = event.target.closest('[data-edge]');
   if (!handle || !['ArrowLeft','ArrowRight'].includes(event.key) || busy() || mutating) return;
   event.preventDefault();
@@ -1280,14 +1404,17 @@ $("settings-save").onclick = safe(async () => {
   $("settings-dialog").close();
 });
 $("add-clip").onclick = safe(async () => {
-  const start = clip() ? clip().end : 0,
-    end = Math.min(project().metadata.duration, start + 90);
-  if (end <= start)
-    throw Error("영상 끝입니다. 기존 구간을 나누거나 시간을 조정하세요.");
-  await edit("add", { start, end });
-  cid = project().clips.at(-1).id;
-  shownRevision = -1;
-  render();
+  if (busy() || mutating || clipCreationPending) return;
+  const at = previewTime(), gaps=sourceGaps();
+  const gap=gapAt(at) || gaps.find(g=>g.start>=at) || gaps[0];
+  if (!gap) throw Error('빈 구간이 없습니다. 기존 쇼츠의 길이를 조정해 주세요.');
+  cancelClipInteraction();
+  const start=Math.max(gap.start,Math.min(gap.end-.1,at>=gap.start && at<gap.end ? snapSourceTime(at) : gap.start));
+  clipAddDraft={pid,revision:project().revision,gap,start,end:Math.min(gap.end,start+90)};
+  renderClipAddDraft(true);
+  $('clip-timeline-editor').scrollIntoView({block:'center',behavior:'smooth'});
+  $('confirm-add-clip').focus({preventScroll:true});
+  seekSource(start);
 });
 $("undo").onclick = safe(() => edit("undo"));
 $("hooks").onclick = safe(async (e) => {
