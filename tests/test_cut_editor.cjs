@@ -21,6 +21,8 @@ function element(id) {
   return elements.get(id);
 }
 const frameCallbacks = new Map(), cancelledFrames = [];
+const documentListeners = {};
+let dialogOpen = false;
 let callbackId = 0;
 const video = element('video');
 video.requestVideoFrameCallback = callback => { frameCallbacks.set(++callbackId, callback); return callbackId; };
@@ -28,7 +30,9 @@ video.cancelVideoFrameCallback = id => { cancelledFrames.push(id); frameCallback
 const context = vm.createContext({
   console, setTimeout(){}, clearTimeout(){}, setInterval(){}, requestAnimationFrame(){return 1;}, cancelAnimationFrame(){},
   localStorage:{getItem(){return null;}, setItem(){}},
-  document:{getElementById:element, querySelectorAll(){return [];}, querySelector:element, addEventListener(){}},
+  document:{getElementById:element, querySelectorAll(){return [];},
+    querySelector(selector){return selector === 'dialog[open]' ? (dialogOpen ? {} : null) : element(selector);},
+    addEventListener(name, listener){(documentListeners[name] ||= []).push(listener);}},
   window:{addEventListener(){}}, ResizeObserver:class {observe(){}},
   fetch(){return new Promise(() => {});},
 });
@@ -44,6 +48,47 @@ run(`
       {id:'b',start:1.066667,end:1.3,zoom:1.5,center:1}]
   }]}];
 `);
+const shortcut = documentListeners.keydown.find(fn => fn.name === 'handlePlaybackShortcut');
+assert.ok(shortcut, 'Space playback is registered on the document');
+let playbackClicks = 0;
+element('play').click = () => playbackClicks++;
+function spaceEvent(options={}) {
+  return {code:'Space', key:' ', target:{closest(){return null;}}, defaultPrevented:false,
+    preventDefault(){this.defaultPrevented=true;}, ...options};
+}
+for (const fromShotTimeline of [false, true]) {
+  const event = spaceEvent(), before = playbackClicks;
+  if (fromShotTimeline) element('shot-timeline-scroll').onkeydown(event);
+  shortcut(event);
+  assert.equal(playbackClicks, before+1, 'Space toggles once, including after bubbling through the shot timeline');
+  assert.equal(event.defaultPrevented, true, 'native scrolling/button activation is prevented');
+}
+for (const options of [{repeat:true}, {shiftKey:true,repeat:true}]) {
+  const event = spaceEvent(options), before = playbackClicks;
+  shortcut(event);
+  assert.equal(playbackClicks, before, 'holding Space does not repeatedly toggle playback');
+  assert.equal(event.defaultPrevented, true, 'repeated Space still cannot scroll the page');
+}
+for (const options of [
+  {isComposing:true}, {keyCode:229}, {ctrlKey:true}, {metaKey:true}, {altKey:true},
+  {target:{isContentEditable:true}}, {target:{closest(){return {};}}},
+  {code:'Enter',key:'Enter'}, {defaultPrevented:true},
+]) {
+  const event = spaceEvent(options), before = playbackClicks, prevented = event.defaultPrevented;
+  shortcut(event);
+  assert.equal(playbackClicks, before, 'typing, form controls, composition and other shortcuts keep their behavior');
+  assert.equal(event.defaultPrevented, prevented, 'ignored shortcuts are not intercepted');
+}
+for (const noClip of [false,true]) {
+  dialogOpen = !noClip;
+  if (noClip) run("cid='missing'");
+  const event = spaceEvent(), before = playbackClicks;
+  shortcut(event);
+  assert.equal(playbackClicks, before, 'dialogs and empty projects never trigger background playback');
+  assert.equal(event.defaultPrevented, false);
+}
+run("cid='c'");
+dialogOpen = false;
 assert.equal(run('timelineTick(60, 600)'), 10, 'timeline labels stay at least 100 pixels apart');
 assert.equal(run('timelineTick(60, 340)'), 20, 'narrow timelines use readable ruler spacing');
 assert.equal(run('sourceFps()'), 30000/1001, 'rational FPS is parsed');
@@ -252,5 +297,5 @@ assert.equal(run('previewUpdates.length'), updateCount, 'callbacks from a previo
     const left=start/100*width-6+offset;
     assert.ok(left>=0 && left+132<=width,'compact hover preview stays inside both source edges without reserving time');
   }
-  console.log('Cut editor: frame timing, cut/source timeline drags, trim save/cancel/conflict, selection/save isolation, and callback lifecycle passed.');
+  console.log('Cut editor: global Space playback, frame timing, cut/source timeline drags, trim save/cancel/conflict, selection/save isolation, and callback lifecycle passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

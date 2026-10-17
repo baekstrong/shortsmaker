@@ -1052,10 +1052,9 @@ $("next-shot").onclick = () => moveShot(1);
 $("previous-frame").onclick = () => seekFrame(adjacentFrame(previewTime(), -1), true);
 $("next-frame").onclick = () => seekFrame(adjacentFrame(previewTime(), 1), true);
 $("shot-timeline-scroll").onkeydown = event => {
-  if (busy() || mutating || !["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," "].includes(event.key)) return;
+  if (busy() || mutating || !["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(event.key)) return;
   event.preventDefault();
-  if (event.key === " ") { if (!event.repeat) $("play").click(); }
-  else if (event.key === "ArrowUp" || event.key === "ArrowDown") moveShot(event.key === "ArrowUp" ? -1 : 1);
+  if (event.key === "ArrowUp" || event.key === "ArrowDown") moveShot(event.key === "ArrowUp" ? -1 : 1);
   else seekFrame(adjacentFrame(previewTime(), event.key === "ArrowLeft" ? -1 : 1), true);
 };
 for (const button of document.querySelectorAll("[data-shot-align]")) button.onclick = safe(() => {
@@ -1157,12 +1156,16 @@ for (const edge of ["start", "end"]) {
 $("preview").onclick = e => {
   if (e.target !== $("video")) $("preview").focus({ preventScroll:true });
 };
-document.querySelector(".preview-pane").addEventListener("keydown", e => {
-  if (e.code !== "Space" || e.defaultPrevented) return;
-  if (e.target.closest("button,textarea,[contenteditable=true],input:not([type=range])")) return;
-  e.preventDefault();
-  if (!e.repeat) $("play").click();
-});
+function handlePlaybackShortcut(event) {
+  if ((event.code !== "Space" && event.key !== " ") || event.defaultPrevented || !clip()) return;
+  if (event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (document.querySelector("dialog[open]") || event.target.isContentEditable ||
+      event.target.closest("textarea,select,input:not([type=range]),[role=textbox]")) return;
+  // One handler covers the preview, timelines and focused buttons without native scrolling/clicks.
+  event.preventDefault();
+  if (!event.repeat) $("play").click();
+}
+document.addEventListener("keydown", handlePlaybackShortcut);
 function informationRegions() {
   const c = clip();
   if (!c) return [];
