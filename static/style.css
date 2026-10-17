@@ -751,12 +751,12 @@ main { margin-left:clamp(340px, 30vw, 480px); padding-left:20px; padding-right:2
   .work-grid { grid-template-columns:1fr; }
 }
 
-/* Each editing column scrolls without moving the other columns. */
+/* Scroll each editing column, then continue through its boundary to the page. */
 .work-grid > section {
   height:clamp(360px, calc(100dvh - 420px), 800px);
   overflow-y:auto;
   overflow-x:hidden;
-  overscroll-behavior-y:contain;
+  overscroll-behavior-y:auto;
   scrollbar-gutter:stable;
   min-width:0;
 }

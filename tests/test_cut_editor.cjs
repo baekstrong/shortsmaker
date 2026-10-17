@@ -18,6 +18,14 @@ function element(id) {
     setPointerCapture(id){this.captured=id;}, hasPointerCapture(id){return this.captured===id;},
     releasePointerCapture(){this.captured=null;},
   });
+  const node = elements.get(id);
+  if (!Object.hasOwn(node, 'markupWrites')) {
+    node.markupWrites = 0;
+    Object.defineProperty(node, 'innerHTML', {
+      get(){return this.markup || '';},
+      set(value){this.markup = value; this.markupWrites++;},
+    });
+  }
   return elements.get(id);
 }
 const frameCallbacks = new Map(), cancelledFrames = [];
@@ -89,6 +97,19 @@ for (const noClip of [false,true]) {
 }
 run("cid='c'");
 dialogOpen = false;
+run(`clip().hooks=[]; clip().included=true; render();`);
+const listWrites = element('clips').markupWrites, projectWrites = element('projects').markupWrites;
+const overviewWrites = element('clip-strip').markupWrites;
+run('render()');
+assert.equal(element('clips').markupWrites,listWrites,'polling preserves clip cards and keyboard focus');
+assert.equal(element('projects').markupWrites,projectWrites,'polling preserves project buttons');
+run(`project().clips.push({...clip(),id:'selection-check',start:2,end:3}); project().revision++; render();`);
+const selectionWrites = element('clip-strip').markupWrites, cardWrites = element('clips').markupWrites;
+run(`selectClip('selection-check'); selectClip('c');`);
+assert.equal(element('clip-strip').markupWrites,selectionWrites,'selecting shorts preserves overview thumbnails and handles');
+assert.equal(element('clips').markupWrites,cardWrites,'selecting shorts only changes active card styling');
+assert.ok(selectionWrites>overviewWrites,'an actual range change still rebuilds the overview');
+run(`project().clips.pop(); project().revision++; render();`);
 assert.equal(run('timelineTick(60, 600)'), 10, 'timeline labels stay at least 100 pixels apart');
 assert.equal(run('timelineTick(60, 340)'), 20, 'narrow timelines use readable ruler spacing');
 assert.equal(run('sourceFps()'), 30000/1001, 'rational FPS is parsed');
@@ -213,6 +234,24 @@ assert.equal(run('previewUpdates.length'), updateCount, 'callbacks from a previo
   video.currentTime=1.4;
   finishTitleDecode(); await loadingOutside;
   assert.equal(element('title-image').hidden,true,'a delayed title load never overlays source footage outside the short');
+  let titleFetches = 0;
+  context.fetch=async()=>{titleFetches++; return {ok:true,blob:async()=>({})};};
+  context.Image=class {async decode(){}};
+  run(`project().clips.push({...clip(),id:'cached-title',hook:'another title'}); cid='cached-title';`);
+  await run('loadTitlePreview()');
+  assert.equal(titleFetches,1,'a new short loads its own title');
+  run(`cid='c';`);
+  await run('loadTitlePreview()');
+  assert.equal(titleFetches,1,'returning to a short reuses the decoded title without a request');
+  run('project().revision++');
+  await run('loadTitlePreview()');
+  assert.equal(titleFetches,1,'unrelated edits do not reload the same hook');
+  run(`clip().hook='edited title'; project().revision++;`);
+  await run('loadTitlePreview()');
+  assert.equal(titleFetches,2,'changed hook text invalidates its title');
+  await run('loadTitlePreview(true)');
+  assert.equal(titleFetches,3,'manual preview retry bypasses the title cache');
+  run('project().clips.pop()');
   context.fetch=()=>new Promise(()=>{});
   run('sourcePreview=false;');
   run(`

@@ -1,5 +1,12 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
+const renderedMarkup = new Map();
+function renderMarkup(id, html) {
+  // Polling must not replace unchanged controls, images, focus or scroll positions.
+  if (renderedMarkup.get(id) === html) return;
+  $(id).innerHTML = html;
+  renderedMarkup.set(id, html);
+}
 const statusNames = {
   pending: "준비 중",
   creating: "예약 생성 중",
@@ -283,12 +290,12 @@ function renderJobs(jobs) {
 }
 function render() {
   const p = project();
-  $("projects").innerHTML = state.projects
+  renderMarkup("projects", state.projects
     .map(
       (p) =>
         `<div class="project-row ${p.id === pid ? "active" : ""}"><button data-project="${p.id}" class="project-select">${esc(p.name)}<small>${time(p.metadata.duration)} · 쇼츠 ${p.clips.length}개</small></button><button class="project-delete" data-delete-project="${p.id}" aria-label="${esc(p.name)} 프로젝트 목록에서 삭제" title="프로젝트 목록에서 삭제" ${state.jobs.some((j) => j.project_id === p.id && ["running", "queued"].includes(j.status)) ? "disabled" : ""}>삭제</button></div>`,
     )
-    .join("");
+    .join(""));
   $("empty").hidden = !!p;
   $("workspace").hidden = !p;
   $("settings-button").disabled = !p;
@@ -302,12 +309,16 @@ function render() {
     "내용 분석을 시작하면 AI가 구간을 제안합니다. 직접 추가할 수도 있습니다.";
   if (!clip()) { cid = p.clips[0]?.id; selectFirstShot = true; }
   renderClipTimeline();
-  $("clips").innerHTML = p.clips
+  renderMarkup("clips", p.clips
     .map(
       (c, i) =>
-        `<article tabindex="0" role="button" data-clip="${c.id}" class="clip-card ${c.id === cid ? "active" : ""} ${!c.included ? "excluded" : ""}"><div class="row"><span class="badge">SHORT ${String(i + 1).padStart(2, "0")}</span><input type="checkbox" data-include="${c.id}" ${c.included ? "checked" : ""} aria-label="${i + 1}번 쇼츠 작업에 포함" ${busy() ? "disabled" : ""}></div><h3>${esc(c.title)}</h3><small>${time(c.start)} – ${time(c.end)} · ${editedDuration(c).toFixed(1)}초${c.cuts?.length ? ` · ${c.cuts.length}곳 삭제, ${(c.end-c.start-editedDuration(c)).toFixed(1)}초 단축` : ""}</small><div><small class="${editedDuration(c) > 180 ? "warning" : ""}">${editedDuration(c) > 180 ? "3분 초과 · 추가 분할 필요" : c.confirmed ? "✓ 문구 확정" : "문구 확인 대기"}${c.frame_suggestions?.length ? ` · 설명 화면 ${c.frame_suggestions.length}곳` : ""}</small></div></article>`,
+        `<article tabindex="0" role="button" data-clip="${c.id}" class="clip-card ${!c.included ? "excluded" : ""}"><div class="row"><span class="badge">SHORT ${String(i + 1).padStart(2, "0")}</span><input type="checkbox" data-include="${c.id}" ${c.included ? "checked" : ""} aria-label="${i + 1}번 쇼츠 작업에 포함" ${busy() ? "disabled" : ""}></div><h3>${esc(c.title)}</h3><small>${time(c.start)} – ${time(c.end)} · ${editedDuration(c).toFixed(1)}초${c.cuts?.length ? ` · ${c.cuts.length}곳 삭제, ${(c.end-c.start-editedDuration(c)).toFixed(1)}초 단축` : ""}</small><div><small class="${editedDuration(c) > 180 ? "warning" : ""}">${editedDuration(c) > 180 ? "3분 초과 · 추가 분할 필요" : c.confirmed ? "✓ 문구 확정" : "문구 확인 대기"}${c.frame_suggestions?.length ? ` · 설명 화면 ${c.frame_suggestions.length}곳` : ""}</small></div></article>`,
     )
-    .join("");
+    .join(""));
+  for (const node of $("clips").children) {
+    node.classList.toggle("active", node.dataset.clip === cid);
+    node.querySelector('[data-include]').checked = !!p.clips.find(c => c.id === node.dataset.clip)?.included;
+  }
   // Jobs are newest first; a resumed job replaces the previous status card.
   const relevant = state.jobs.filter((j) => j.project_id === pid).slice(0, 1);
   renderJobs(relevant);
@@ -353,7 +364,7 @@ function renderEditor() {
   )
     v.currentTime = keptRanges(c)[0].start;
   $("content-edit-legacy").hidden = !(c.cuts || []).length;
-  $("content-cuts").innerHTML = (c.cuts || []).map((cut, i) => `<div class="content-cut"><div><strong>원본 ${cut.start.toFixed(2)} ~ ${cut.end.toFixed(2)}초 삭제</strong><p>${esc(cut.reason)}</p></div><button data-restore-cut="${i}" class="quiet">복원</button></div>`).join("");
+  renderMarkup("content-cuts", (c.cuts || []).map((cut, i) => `<div class="content-cut"><div><strong>원본 ${cut.start.toFixed(2)} ~ ${cut.end.toFixed(2)}초 삭제</strong><p>${esc(cut.reason)}</p></div><button data-restore-cut="${i}" class="quiet">복원</button></div>`).join(""));
   const draft = titleDrafts.get(`${pid}/${cid}`);
   fieldValue("hook", draft?.changes.hook ?? c.hook);
   fieldValue("yellow", draft?.changes.yellow ?? c.yellow);
@@ -363,12 +374,12 @@ function renderEditor() {
     : "이 문구로 확정";
   $("recommendation").textContent =
     c.recommendation_reason || "AI가 검수한 후보 중 가장 좋은 문구를 추천합니다.";
-  $("hooks").innerHTML = c.hooks
+  renderMarkup("hooks", c.hooks
     .map(
       (h, i) =>
         `<button class="hook-option ${i === c.recommended_index ? "recommended" : ""} ${h.text === c.hook ? "selected" : ""}" data-hook="${i}">${i === c.recommended_index ? "<strong>✦ AI 추천</strong>" : ""}${esc(h.text)}${h.approach ? `<small class="hook-evaluation">${esc(h.approach)} · ${esc(h.evaluation || "")}</small>` : ""}</button>`,
     )
-    .join("");
+    .join(""));
   const f = editingFrame();
   fieldValue("zoom", f.zoom);
   fieldValue("center", f.center);
@@ -380,7 +391,7 @@ function renderEditor() {
     : regions.length ? regions.map((s, i) => {
       const applied = c.frame_overrides?.find(f => f.id === s.id);
       return `<div data-region-id="${esc(s.id)}" class="frame-suggestion ${editingRegion()?.id === s.id ? "selected" : ""}">
-        <button class="information-inspect" data-inspect="${i}">${s.thumbnail ? `<img src="/api/projects/${pid}/clips/${c.id}/information/${s.id}.jpg?v=${project().revision}" alt="설명 자료가 등장하는 원본 화면" loading="lazy">` : ""}
+        <button class="information-inspect" data-inspect="${i}">${s.thumbnail ? `<img src="/api/projects/${pid}/clips/${c.id}/information/${s.id}.jpg?v=${encodeURIComponent(s.thumbnail+':'+s.time)}" alt="설명 자료가 등장하는 원본 화면" loading="lazy">` : ""}
         <strong>${esc(s.subject || "설명 자료")}</strong><span>소재 내 ${preciseTime(s.start-c.start)} ~ ${preciseTime(s.end-c.start)}</span><small>원본 ${time(s.start)} ~ ${time(s.end)}</small></button>
         <p>${esc(s.reason)}</p><small>추천: ${esc(s.direction)} · ${Math.round(s.zoom*100)}%${s.confidence < .8 ? " · 확인 필요" : ""}</small>
         <div class="region-time-editor">
@@ -396,7 +407,7 @@ function renderEditor() {
       </div>`;
     }).join("")
     : '<p class="muted">설명 그림·글·각도 표시를 찾지 못했습니다. 필요하면 다시 분석해 주세요.</p>';
-  $("information-markers").innerHTML = regions.map((s,i) => `<button data-inspect="${i}" title="${esc(s.subject || s.reason)}">${time(s.start-c.start)}–${time(s.end-c.start)} 설명</button>`).join("");
+  renderMarkup("information-markers", regions.map((s,i) => `<button data-inspect="${i}" title="${esc(s.subject || s.reason)}">${time(s.start-c.start)}–${time(s.end-c.start)} 설명</button>`).join(""));
   configureFrameInputs();
   loadTitlePreview();
   for (const el of document.querySelectorAll("#editor button,#editor input,#editor textarea,#hooks-pane button,#hooks-pane input,#hooks-pane textarea"))
@@ -405,19 +416,33 @@ function renderEditor() {
   $("download").disabled = busy() || !c.render_current;
 }
 let titleRequest = 0, titleURL = "", titleLoadedURL = "", titleObjectURL = null, titleRetryAt = 0;
+const titlePreviewCache = new Map();
 function updateTitleVisibility(at = previewTime()) {
   const c = clip();
   // Source navigation still previews the selected short's hook inside its range.
   $("title-image").hidden = !c || (sourcePreview && !containsFrame(c, at)) || titleLoadedURL !== titleURL || !titleObjectURL;
 }
 async function loadTitlePreview(force = false) {
-  if (!clip()) return;
-  const url = `/api/projects/${pid}/clips/${cid}/title.png?v=${project().revision}`;
+  const c = clip();
+  if (!c) return;
+  // Crop/trim edits do not change the title image. Reuse decoded titles on return visits.
+  const version = encodeURIComponent(JSON.stringify([c.hook, c.yellow, c.font_size]));
+  const url = `/api/projects/${pid}/clips/${cid}/title.png?v=${version}`;
   if (!force && url === titleURL) return;
   titleURL = url;
   const request = ++titleRequest;
   $("title-image").hidden = true;
   $("preview-error").hidden = true;
+  if (!force && titlePreviewCache.has(url)) {
+    titleObjectURL = titlePreviewCache.get(url);
+    titlePreviewCache.delete(url);
+    titlePreviewCache.set(url, titleObjectURL);
+    titleLoadedURL = url;
+    $("title-image").src = titleObjectURL;
+    titleRetryAt = 0;
+    updateTitleVisibility();
+    return;
+  }
   try {
     const response = await fetch(url, { cache: "no-cache" });
     if (!response.ok) {
@@ -431,7 +456,15 @@ async function loadTitlePreview(force = false) {
     img.src = objectURL;
     try { await img.decode(); } catch (e) { URL.revokeObjectURL(objectURL); throw e; }
     if (request !== titleRequest) { URL.revokeObjectURL(objectURL); return; }
-    if (titleObjectURL) URL.revokeObjectURL(titleObjectURL);
+    const previous = titlePreviewCache.get(url);
+    if (previous) URL.revokeObjectURL(previous);
+    titlePreviewCache.delete(url);
+    titlePreviewCache.set(url, objectURL);
+    while (titlePreviewCache.size > 16) {
+      const oldest = titlePreviewCache.keys().next().value;
+      URL.revokeObjectURL(titlePreviewCache.get(oldest));
+      titlePreviewCache.delete(oldest);
+    }
     titleObjectURL = objectURL;
     titleLoadedURL = url;
     $("title-image").src = objectURL;
@@ -734,8 +767,8 @@ function renderClipTimeline() {
   $('retry-clip-prepare').hidden = !c?.gap_preparation || c.gap_preparation.status==='complete' || busy() || clipCreationPending;
   $('clip-timeline-summary').textContent = `원본 전체 ${preciseTime(duration)} · 쇼츠 ${p.clips.length}개${c ? ` · 선택: 쇼츠 ${p.clips.indexOf(c)+1} · ${preciseTime(c.start)} ~ ${preciseTime(c.end)}` : ''}`;
   if (clipInteraction) return;
-  const key = `${pid}/${cid}/${p.revision}/${busy()}/${width}`;
-  if (key === clipTimelineKey) return;
+  const key = `${pid}/${p.revision}/${busy()}/${width}`;
+  if (key === clipTimelineKey) { updateClipSelection(); return; }
   clipTimelineKey = key;
   const tick = timelineTick(duration, width);
   $('clip-ruler').innerHTML = Array.from({length:Math.floor(duration/tick)+1}, (_,i) => `<span style="left:${100*i*tick/duration}%">${time(i*tick)}</span>`).join('')+`<span class="clip-ruler-end">${time(duration)}</span>`;
@@ -750,6 +783,13 @@ function renderClipTimeline() {
     <button class="clip-range-body" data-select-clip="${esc(c.id)}" aria-pressed="${c.id===cid}" aria-label="쇼츠 ${index+1} 선택: ${esc(c.title)}"><span class="clip-range-preview"><span class="clip-range-images" aria-hidden="true">${timelineImages(c.start,c.end,(c.end-c.start)/duration*width,8)}</span><span class="clip-range-caption"><span class="clip-range-label">쇼츠 ${index+1}${!c.included?' · 제외':''}</span><span class="clip-range-time">${(c.end-c.start).toFixed(1)}초</span></span></span></button>
     <button class="clip-trim-handle" data-edge="start" aria-label="쇼츠 ${index+1} 시작 조정" title="드래그로 시작 조정 · 방향키로 한 프레임" ${busy()?'disabled':''}></button>
     <button class="clip-trim-handle" data-edge="end" aria-label="쇼츠 ${index+1} 끝 조정" title="드래그로 끝 조정 · 방향키로 한 프레임" ${busy()?'disabled':''}></button></div>`).join('');
+}
+function updateClipSelection() {
+  for (const node of $('clip-strip').children) {
+    const selected = node.dataset.clipId === cid;
+    node.classList.toggle('active', selected);
+    node.querySelector('[data-select-clip]').setAttribute('aria-pressed', String(selected));
+  }
 }
 function sourceTimeAt(event) {
   const rect = $('clip-timeline').getBoundingClientRect();
@@ -953,7 +993,7 @@ function renderShotTimeline() {
       const overrides = (c.frame_overrides || []).filter(f => f.start < shot.end-1e-6 && f.end > shot.start+1e-6);
       const changed = overrides.length > 0;
       const mixed = changed && !(overrides.length === 1 && overrides[0].start <= shot.start+1e-6 && overrides[0].end >= shot.end-1e-6);
-      return `<button class="shot-cell${changed ? " adjusted" : ""}" data-shot-id="${esc(shot.id)}" style="left:${100*(shot.start-c.start)/duration}%;width:${100*(shot.end-shot.start)/duration}%" aria-label="원본 컷 ${index+1}, ${preciseTime(shot.start-c.start)}부터 ${preciseTime(shot.end-c.start)}까지${mixed ? ", 구도 혼합" : changed ? ", 구도 적용됨" : ""}" title="컷 ${index+1} · ${preciseTime(shot.start-c.start)} ~ ${preciseTime(shot.end-c.start)}${mixed ? " · 구도 혼합" : ""}">${shot.thumbnail ? `<img src="/api/projects/${pid}/clips/${cid}/shots/${encodeURIComponent(shot.id)}.jpg?v=${project().revision}" alt="" loading="lazy">` : '<span class="shot-no-image">원본 컷</span>'}<span class="shot-cell-label">${index+1}${mixed ? " · 혼합" : changed ? " · 적용" : ""}</span></button>`;
+      return `<button class="shot-cell${changed ? " adjusted" : ""}" data-shot-id="${esc(shot.id)}" style="left:${100*(shot.start-c.start)/duration}%;width:${100*(shot.end-shot.start)/duration}%" aria-label="원본 컷 ${index+1}, ${preciseTime(shot.start-c.start)}부터 ${preciseTime(shot.end-c.start)}까지${mixed ? ", 구도 혼합" : changed ? ", 구도 적용됨" : ""}" title="컷 ${index+1} · ${preciseTime(shot.start-c.start)} ~ ${preciseTime(shot.end-c.start)}${mixed ? " · 구도 혼합" : ""}">${shot.thumbnail ? `<img src="/api/projects/${pid}/clips/${cid}/shots/${encodeURIComponent(shot.id)}.jpg?v=${encodeURIComponent(shot.thumbnail+':'+shot.time)}" alt="" loading="lazy">` : '<span class="shot-no-image">원본 컷</span>'}<span class="shot-cell-label">${index+1}${mixed ? " · 혼합" : changed ? " · 적용" : ""}</span></button>`;
     }).join("");
   }
   const selected = editingShot(), selectedIndex = shots.indexOf(selected);
@@ -1211,6 +1251,8 @@ function updatePreview(at) {
   const p = project(),
     c = clip(),
     v = $("video");
+  // Read layout before changing playheads/labels to avoid a forced layout on each video frame.
+  const ratio = p && c ? $("preview").clientWidth / 1080 : 0;
   updateRegionTimeline();
   if (!p || !c) return;
   const t = Math.max(sourcePreview ? 0 : c.start, Math.min(sourcePreview ? p.metadata.duration : c.end, Number.isFinite(at) ? at : previewTime()));
@@ -1225,7 +1267,6 @@ function updatePreview(at) {
   updateShotPlayhead(t);
   const s = sourcePreview && (t<c.start || t>=c.end) ? {zoom:1,center:.5,vertical:.5} : activeFrame(t);
   const { z, sw, sh, x, y } = frameGeometry(s);
-  const ratio = $("preview").clientWidth / 1080;
   v.style.width = sw * ratio + "px";
   v.style.height = sh * ratio + "px";
   v.style.left = -x * ratio + "px";

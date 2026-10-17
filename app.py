@@ -109,7 +109,7 @@ def create_app(data_dir=None):
     @app.get("/api/state")
     def state():
         return jsonify(
-            projects=[present(p) for p in store.list()],
+            projects=[present(p) for p in store.list(include_history=False)],
             jobs=jobs.list(),
             models=ai.models(),
         )
@@ -173,12 +173,12 @@ def create_app(data_dir=None):
 
     @app.get("/api/projects/<pid>/source")
     def source(pid):
-        p = store.load(pid)
+        p = store.load(pid, include_history=False)
         return send_file(service.source(p), conditional=True)
 
     @app.get("/api/projects/<pid>/clips/<cid>/title.png")
     def title(pid, cid):
-        p = store.load(pid)
+        p = store.load(pid, include_history=False)
         c = next(c for c in p["clips"] if c["id"] == cid)
         path = store.folder(pid) / "titles" / (media.render_key(p, c) + ".png")
         valid = False
@@ -200,7 +200,7 @@ def create_app(data_dir=None):
 
     @app.get("/api/projects/<pid>/clips/<cid>/information/<sid>.jpg")
     def information_thumbnail(pid, cid, sid):
-        p = store.load(pid)
+        p = store.load(pid, include_history=False)
         c = next(c for c in p["clips"] if c["id"] == cid)
         s = next(s for s in (c.get("frame_suggestions") or []) if s.get("id") == sid)
         name = s.get("thumbnail", "")
@@ -213,14 +213,14 @@ def create_app(data_dir=None):
 
     @app.get("/api/projects/<pid>/timeline.jpg")
     def timeline_thumbnail(pid):
-        p = store.load(pid)
+        p = store.load(pid, include_history=False)
         path = media.timeline_thumbnail(service.source(p), request.args.get("time"),
                                         p["metadata"], store.folder(pid) / "timeline-thumbnails")
         return send_file(path, conditional=True)
 
     @app.get("/api/projects/<pid>/clips/<cid>/shots/<sid>.jpg")
     def shot_thumbnail(pid, cid, sid):
-        p = store.load(pid)
+        p = store.load(pid, include_history=False)
         c = next(c for c in p["clips"] if c["id"] == cid)
         shot = next((s for s in c.get("source_shots", []) if s["id"] == sid), None)
         if shot is None:
@@ -235,7 +235,7 @@ def create_app(data_dir=None):
 
     @app.get("/api/projects/<pid>/clips/<cid>/output")
     def output(pid, cid):
-        p = store.load(pid)
+        p = store.load(pid, include_history=False)
         c = next(c for c in p["clips"] if c["id"] == cid)
         r = c.get("render")
         if not r or r["key"] != media.render_key(p, c):
