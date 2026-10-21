@@ -119,7 +119,7 @@ class Store:
             updated_at=now(),
             clips=[],
             transcript=[],
-            model="gpt-6-astra",
+            model="claude-opus-5-5",
             effort="medium",
             stt_model="medium",
             history=[],

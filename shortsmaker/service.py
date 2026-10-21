@@ -443,7 +443,7 @@ class Service:
             if action == "settings":
                 if body["model"] not in ai.models():
                     raise ValueError("사용 가능한 모델을 선택해 주세요.")
-                if body["effort"] not in ("low", "medium", "high", "xhigh") or body[
+                if body["effort"] not in ("low", "medium", "high", "xhigh", "max") or body[
                     "stt_model"
                 ] not in ("small", "medium", "large-v3"):
                     raise ValueError("분석 설정이 올바르지 않습니다.")

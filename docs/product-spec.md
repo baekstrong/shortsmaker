@@ -366,3 +366,9 @@
 - 쇼츠 목록과 후킹 패널 내부에서 스크롤하고, 맨 위·아래에 도달하면 페이지 스크롤로 자연스럽게 이어진다. 확대 타임라인의 가로 이동은 유지한다.
 - 쇼츠 선택은 전체 타임라인/목록을 다시 만들지 않고 선택 표시만 바꾼다. 같은 후킹 이미지와 썸네일을 재사용하며 문구·크기 등 해당 내용이 바뀌면 갱신한다.
 - 상태/미디어 조회는 되돌리기 이력을 반복해서 읽지 않고 현재 상태를 재사용한다. 저장·외부 변경을 감지하고 편집/되돌리기 데이터는 보존한다. 실제 데이터11개 프로젝트의 상태 조회 중앙값274.35→68.97ms. 적용 범위와 실제 화면 검증은 [스크롤·속도 검증](verification/scroll-performance.md)을 따른다.
+
+## 2026-10-21 Claude Code 연동
+- AI 기본값을 Claude Code CLI `claude-opus-5-5` / `medium`으로 변경. `claude -p --json-schema --input-format stream-json`으로 구조화 응답과 대표 프레임 이미지를 전달하고 도구·사용자 설정·MCP는 끈다.
+- 모델 선택: claude-opus-5-5, claude-fable-5-1, claude-sonnet-5-5, claude-haiku-5-5와 기존 Codex 모델(gpt-*) 모두 제공. `claude-*`는 Claude Code, 그 외는 Codex로 호출한다. 추론 강도에 max 추가(Codex는 xhigh로 낮춤).
+- 기존 프로젝트의 저장된 모델 설정은 유지하며 새 프로젝트부터 Opus 5.5가 기본이다. Claude Code 2.1.280 이상 필요.
+
