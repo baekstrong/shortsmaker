@@ -372,3 +372,6 @@
 - 모델 선택: claude-opus-5-5, claude-fable-5-1, claude-sonnet-5-5, claude-haiku-5-5와 기존 Codex 모델(gpt-*) 모두 제공. `claude-*`는 Claude Code, 그 외는 Codex로 호출한다. 추론 강도에 max 추가(Codex는 xhigh로 낮춤).
 - 기존 프로젝트의 저장된 모델 설정은 유지하며 새 프로젝트부터 Opus 5.5가 기본이다. Claude Code 2.1.280 이상 필요.
 
+
+## 2026-10-21 후킹 v6
+- 채널 벤치마크(docs/reviews/hook-benchmark-2026-10-21.md) 기준으로 후킹 생성·검수를 v6로 바꿈. 쇼츠 제목·현재 문구를 생성 입력에서 제외하고, 통념 뒤집기 우선 각도와 성과 예시를 넣고, 검수 순위는 반전·자기 관련성·구체성 순. 글자 수·스키마는 유지. 검증: docs/verification/hooks-v6.md.

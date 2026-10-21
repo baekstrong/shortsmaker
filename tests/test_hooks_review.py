@@ -81,6 +81,7 @@ def test_independent_review_gets_only_candidate_text_and_original_evidence(tmp_p
         assert "실제 첫3초 발언: 발언10 발언11 발언20" in prompt
         assert "첫8초 발언: 발언10 발언11 발언20 발언21 발언22 발언23 발언24 발언26" in prompt
         assert "발언00" not in prompt and "발언12" not in prompt and "발언25" not in prompt
+        assert clip["title"] not in prompt
         if schema is ai.HOOK_DRAFT_SCHEMA:
             return copy.deepcopy(draft)
         assert schema is ai.HOOK_REVIEW_SCHEMA
