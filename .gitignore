@@ -6,7 +6,10 @@ node_modules/
 .next/
 dist/
 build/
+.venv
 .venv/
+.venv.nosync/
+.venv.icloud-old/
 __pycache__/
 *.pyc
 # 로컬 영상과 생성물
