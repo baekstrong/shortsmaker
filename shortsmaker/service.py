@@ -201,7 +201,7 @@ class Service:
         if not transcript:
             raise ValueError("인식된 발화가 없습니다. 음성 트랙을 확인해 주세요.")
         p = self.store.change(pid, lambda p: p.update(transcript=transcript))
-        ctx.progress("Astra가 주제별 분할 지점을 제안하고 있습니다.")
+        ctx.progress(f"AI({p['model']})가 주제별 분할 지점을 제안하고 있습니다.")
         result = ai.split(ctx, p, folder / "ai-cache")
         clips = [
             new_clip(c["start"], c["end"], c["title"], c["reason"])
